@@ -1,12 +1,14 @@
 use proc_macro::TokenStream;
+use quote::quote;
 use syn::meta::ParseNestedMeta;
 use syn::parse::Result;
 use syn::parse_macro_input;
+use syn::DeriveInput;
 use syn::LitStr;
 
 #[proc_macro_attribute]
 pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = input.to_string();
+    let input = parse_macro_input!(input as DeriveInput);
 
     let mut attrs = TemplateAttributes::default();
     let tpl_parser = syn::meta::parser(|meta| attrs.parse(meta));
@@ -14,15 +16,12 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let path = attrs.path.unwrap().value();
 
-    format!(
-        r#"
+    quote! {
         #[derive(::askama::Template)]
-        #[template(path = "{path}")]
-        {input}
-        "#
-    )
-    .parse()
-    .unwrap()
+        #[template(path = #path)]
+        #input
+    }
+    .into()
 }
 
 #[derive(Default)]
