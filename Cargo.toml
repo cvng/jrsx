@@ -8,6 +8,7 @@ doctest = false
 proc-macro = true
 
 [dependencies]
+syn = "2.0.48"
 
 [dev-dependencies]
 askama = "0.12.1"
