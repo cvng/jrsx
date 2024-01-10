@@ -1,0 +1,13 @@
+[package]
+name = "jrsx"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+doctest = false
+proc-macro = true
+
+[dependencies]
+
+[dev-dependencies]
+askama = "0.12.1"
