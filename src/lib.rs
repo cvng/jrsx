@@ -29,6 +29,14 @@ impl TemplateAttributes {
     }
 }
 
+#[proc_macro]
+pub fn make_build_templates(_: TokenStream) -> TokenStream {
+    quote! {
+        fn build_templates() {}
+    }
+    .into()
+}
+
 #[proc_macro_attribute]
 pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut attrs = TemplateAttributes::default();
@@ -36,10 +44,13 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
     parse_macro_input!(args with template_parser);
     let input = parse_macro_input!(input as DeriveInput);
 
-    let path = attrs.path.unwrap().value();
-    let path = env::current_dir().unwrap().join("templates").join(path);
-    let source = fs::read_to_string(&path).unwrap();
-    let source = rewrite_source(path.file_stem().unwrap().to_str().unwrap(), source);
+    let path = format!("dist/{}", attrs.path.unwrap().value());
+    let name = input.ident.to_string().to_ascii_lowercase();
+    let source = format!(
+        "\
+        {{%- import \"{path}\" as scope -%}}
+        {{% call scope::{name}() %}}"
+    );
 
     quote! {
         #[derive(::askama::Template)]
@@ -53,6 +64,7 @@ fn rewrite_source(name: &str, source: String) -> String {
     let re = Regex::new(COMPONENT_RE).unwrap();
     let import = add_import(re.captures_iter(&source));
     let source = re.replace_all(&source, rewrite_component).into_owned();
+    let name = name.replace(".", "_");
 
     format!(
         "\
