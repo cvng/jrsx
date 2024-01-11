@@ -48,7 +48,7 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
     let name = input.ident.to_string().to_ascii_lowercase();
     let source = format!(
         "\
-        {{%- import \"{path}\" as scope -%}}
+        {{%- import \"{path}\" as scope -%}}\n\
         {{% call scope::{name}() %}}"
     );
 
