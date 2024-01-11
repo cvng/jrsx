@@ -1,9 +1,9 @@
+#![allow(dead_code)]
+
 use proc_macro::TokenStream;
 use quote::quote;
 use regex::Regex;
 use std::collections::HashSet;
-use std::env;
-use std::fs;
 use syn::meta::ParseNestedMeta;
 use syn::parse::Result;
 use syn::parse_macro_input;
@@ -64,7 +64,7 @@ fn rewrite_source(name: &str, source: String) -> String {
     let re = Regex::new(COMPONENT_RE).unwrap();
     let import = add_import(re.captures_iter(&source));
     let source = re.replace_all(&source, rewrite_component).into_owned();
-    let name = name.replace(".", "_");
+    let name = name.replace('.', "_");
 
     format!(
         "\
