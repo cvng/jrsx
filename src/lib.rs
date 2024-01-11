@@ -34,7 +34,7 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let path = attrs.path.unwrap().value();
     let path = env::current_dir().unwrap().join("templates").join(path);
-    let source = fs::read_to_string(&path).unwrap();
+    let source = fs::read_to_string(path).unwrap();
     let source = rewrite_source(&source);
 
     quote! {
@@ -54,38 +54,27 @@ fn rewrite_source(source: &str) -> String {
 
 fn rewrite_component(caps: &regex::Captures) -> String {
     let name = caps.get(1).unwrap().as_str().to_ascii_lowercase();
-    let attrs = caps.get(2).unwrap().as_str();
-    let mut attrs = attrs.split_whitespace();
-    let mut args = vec![];
-    while let Some(attr) = attrs.next() {
-        let mut attr = attr.split('=');
-        let name = attr.next().unwrap();
-        let value = attr.next().unwrap();
-        args.push(format!("{}={}", name, value));
-    }
+    let args = caps
+        .get(2)
+        .unwrap()
+        .as_str()
+        .split_ascii_whitespace()
+        .collect::<Vec<_>>()
+        .join(", ");
+
     format!(
-        r#"
-        {{%- import "{}.html" as {}_scope -%}}
-        {{% call {}_scope::{}({}) %}}
-        "#,
-        name,
-        name,
-        name,
-        name,
-        args.join(", ")
+        "\
+        {{%- import \"{name}.html\" as {name}_scope -%}}\n\
+        {{% call {name}_scope::{name}({args}) %}}",
     )
-    .trim()
-    .to_string()
 }
 
 #[test]
 fn test_rewrite_source() {
     assert_eq!(
-        rewrite_source(r#"<Hello name="world" />"#),
-        r#"
-        {%- import "hello.html" as hello_scope -%}
-        {% call hello_scope::hello(name="world") %}
-        "#
-        .trim()
+        rewrite_source("<Hello name />"),
+        "\
+        {%- import \"hello.html\" as hello_scope -%}\n\
+        {% call hello_scope::hello(name) %}"
     );
 }
