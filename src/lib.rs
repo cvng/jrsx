@@ -39,7 +39,7 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
     let path = attrs.path.unwrap().value();
     let path = env::current_dir().unwrap().join("templates").join(path);
     let source = fs::read_to_string(&path).unwrap();
-    let source = rewrite_source(&path.file_stem().unwrap().to_str().unwrap(), source);
+    let source = rewrite_source(path.file_stem().unwrap().to_str().unwrap(), source);
 
     quote! {
         #[derive(::askama::Template)]
