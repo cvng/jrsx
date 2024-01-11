@@ -8,7 +8,10 @@ struct Index<'a> {
 #[test]
 fn test_template() {
     assert_eq!(
-        Index { name: "world" }.to_string().trim(),
-        "<h1>Hello, world!</h1>"
+        Index { name: "world" }.to_string(),
+        "\n\
+        <h1>Hello, world!</h1>\n\n\
+        <h1>Hello, world!</h1>\n\n\
+        <h1>Hello, world!</h1>\n\n"
     );
 }

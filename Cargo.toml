@@ -9,6 +9,7 @@ proc-macro = true
 
 [dependencies]
 quote = "1.0.35"
+regex = "1.10.2"
 syn = "2.0.48"
 
 [dev-dependencies]
