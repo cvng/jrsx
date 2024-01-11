@@ -1,6 +1,7 @@
 use jrsx::template;
 
-#[template(path = "index.html")]
+#[derive(askama::Template)]
+#[template(path = "index.dist.html")]
 struct Index<'a> {
     name: &'a str,
 }
@@ -12,6 +13,6 @@ fn test_template() {
         "\n\n\n\
         <h1>Hello, world!</h1>\n\n\n\
         <h1>Hello, world!</h1>\n\n\n\
-        <h1>Hello, world!</h1>\n\n\n"
+        <h1>Hello, world!</h1>\n\n"
     );
 }
