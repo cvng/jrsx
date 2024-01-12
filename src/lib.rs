@@ -11,7 +11,7 @@ use syn::LitStr;
 // TODO: https://crates.io/crates/syn-rsx
 const COMPONENT_RE: &str = r#"<([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>"#;
 const COMPONENT_ARG_RE: &str = r#"\{#def\s+(.+)\s+#\}"#;
-const TEMPLATES_DIR: &str = "target/tmp";
+const TEMPLATES_DIR: &str = "templates";
 
 #[derive(Default)]
 struct TemplateAttributes {
@@ -36,11 +36,7 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
     parse_macro_input!(args with template_parser);
     let input = parse_macro_input!(input as DeriveInput);
 
-    let path = format!(
-        "{}/templates/{}",
-        TEMPLATES_DIR,
-        attrs.path.unwrap().value()
-    );
+    let path = attrs.path.unwrap().value();
     let name = input.ident.to_string().to_ascii_lowercase();
     let source = format!(
         "\
@@ -121,8 +117,8 @@ fn test_rewrite_source() {
 
 fn build_templates() {
     dircpy::copy_dir_advanced(
-        "templates",
-        TEMPLATES_DIR,
+        format!("{}/in", TEMPLATES_DIR),
+        format!("{}/out", TEMPLATES_DIR),
         true,
         true,
         true,
@@ -131,7 +127,7 @@ fn build_templates() {
     )
     .unwrap();
 
-    for path in fs::read_dir("templates")
+    for path in fs::read_dir(format!("{}/in", TEMPLATES_DIR))
         .unwrap()
         .map(|res| res.map(|e| e.path()))
         .collect::<Result<Vec<_>, _>>()
@@ -141,7 +137,7 @@ fn build_templates() {
         let source = fs::read_to_string(&path).unwrap();
         let source = rewrite_source(name, source);
 
-        let out = format!("{}/{}", TEMPLATES_DIR, path.display());
+        let out = format!("{}/out/{}", TEMPLATES_DIR, path.display());
         fs::write(out, source).unwrap();
     }
 }
