@@ -75,11 +75,13 @@ name = "derive"
 version = "0.1.0"
 dependencies = [
  "askama_parser",
+ "basic-toml",
  "mime",
  "mime_guess",
  "proc-macro2",
  "quote",
  "regex",
+ "serde",
  "syn",
 ]
 

@@ -280,7 +280,7 @@ where
 }
 
 #[allow(clippy::match_wild_err_arm)]
-pub(crate) fn get_template_source(tpl_path: &Path) -> std::result::Result<String, CompileError> {
+pub(crate) fn _get_template_source(tpl_path: &Path) -> std::result::Result<String, CompileError> {
     match fs::read_to_string(tpl_path) {
         Err(_) => Err(format!(
             "unable to open template file '{}'",
@@ -294,6 +294,10 @@ pub(crate) fn get_template_source(tpl_path: &Path) -> std::result::Result<String
             Ok(source)
         }
     }
+}
+
+pub(crate) fn get_template_source(tpl_path: &Path) -> std::result::Result<String, CompileError> {
+    _get_template_source(tpl_path).map(|source| crate::rewrite::rewrite_source(tpl_path, source))
 }
 
 static CONFIG_FILE_NAME: &str = "askama.toml";
@@ -316,7 +320,7 @@ mod tests {
         let path = Config::new("", None)
             .and_then(|config| config.find_template("b.html", None))
             .unwrap();
-        assert_eq!(get_template_source(&path).unwrap(), "bar");
+        assert_eq!(_get_template_source(&path).unwrap(), "bar");
     }
 
     #[test]

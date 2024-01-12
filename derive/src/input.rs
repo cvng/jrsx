@@ -219,7 +219,8 @@ impl TemplateArgs {
                     if args.source.is_some() {
                         return Err("must specify 'source' or 'path', not both".into());
                     }
-                    args.source = Some(Source::Path(s.value()));
+                    args.source = Some(Source::Source(crate::rewrite::rewrite_path(s.value())));
+                    args.ext = Some("html".into());
                 } else {
                     return Err("template path must be string literal".into());
                 }
@@ -302,6 +303,7 @@ fn extension(path: &Path) -> Option<&str> {
 
 #[derive(Debug)]
 pub(crate) enum Source {
+    #[allow(dead_code)]
     Path(String),
     Source(String),
 }
