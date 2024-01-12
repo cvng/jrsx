@@ -71,6 +71,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive"
+version = "0.1.0"
+dependencies = [
+ "askama_parser",
+ "mime",
+ "mime_guess",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn",
+]
+
+[[package]]
 name = "humansize"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -84,9 +97,7 @@ name = "jrsx"
 version = "0.1.0"
 dependencies = [
  "askama",
- "quote",
- "regex",
- "syn",
+ "derive",
 ]
 
 [[package]]
