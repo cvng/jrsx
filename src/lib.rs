@@ -2,16 +2,16 @@ use proc_macro::TokenStream;
 use quote::quote;
 use regex::Regex;
 use std::collections::HashSet;
-use std::env;
 use std::fs;
 use syn::meta::ParseNestedMeta;
-use syn::parse::Result;
 use syn::parse_macro_input;
 use syn::DeriveInput;
 use syn::LitStr;
 
 // TODO: https://crates.io/crates/syn-rsx
 const COMPONENT_RE: &str = r#"<([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>"#;
+const COMPONENT_ARG_RE: &str = r#"\{#def\s+(.+)\s+#\}"#;
+const TEMPLATES_DIR: &str = "templates";
 
 #[derive(Default)]
 struct TemplateAttributes {
@@ -19,7 +19,7 @@ struct TemplateAttributes {
 }
 
 impl TemplateAttributes {
-    fn parse(&mut self, meta: ParseNestedMeta) -> Result<()> {
+    fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
         if meta.path.is_ident("path") {
             self.path = meta.value()?.parse()?;
             Ok(())
@@ -37,9 +37,14 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let path = attrs.path.unwrap().value();
-    let path = env::current_dir().unwrap().join("templates").join(path);
-    let source = fs::read_to_string(&path).unwrap();
-    let source = rewrite_source(path.file_stem().unwrap().to_str().unwrap(), source);
+    let name = input.ident.to_string().to_ascii_lowercase();
+    let source = format!(
+        "\
+        {{%- import \"{path}\" as scope -%}}\n\
+        {{% call scope::{name}() %}}"
+    );
+
+    copy_templates(); //
 
     quote! {
         #[derive(::askama::Template)]
@@ -53,14 +58,20 @@ fn rewrite_source(name: &str, source: String) -> String {
     let re = Regex::new(COMPONENT_RE).unwrap();
     let import = add_import(re.captures_iter(&source));
     let source = re.replace_all(&source, rewrite_component).into_owned();
+    let name = name.replace('.', "_");
+    let mut args = String::new();
+    let re2 = Regex::new(COMPONENT_ARG_RE).unwrap();
+    if let Some(caps) = re2.captures(&source) {
+        args = caps.get(1).unwrap().as_str().to_string();
+    }
+    let source = re2.replace_all(&source, "");
 
     format!(
         "\
-        {import}\n\
-        {{% macro {name}() %}}\n\
-        {source}\n\
-        {{% endmacro %}}\n\
-        {{% call {name}() %}}",
+        {import}\
+        {{% macro {name}({args}) %}}\n\
+        {source}\
+        {{% endmacro %}}\n",
     )
 }
 
@@ -99,10 +110,32 @@ fn test_rewrite_source() {
     assert_eq!(
         rewrite_source("index", "<Hello name />".to_string()),
         "\
-        {%- import \"hello.html\" as hello_scope -%}\n\n\
+        {%- import \"hello.html\" as hello_scope -%}\n\
         {% macro index() %}\n\
-        {% call hello_scope::hello(name) %}\n\
-        {% endmacro %}\n\
-        {% call index() %}"
+        {% call hello_scope::hello(name) %}\
+        {% endmacro %}\n"
     );
+}
+
+fn copy_templates() {
+    for path in fs::read_dir(format!("{}/in", TEMPLATES_DIR))
+        .unwrap()
+        .map(|res| res.map(|e| e.path()))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+    {
+        let name = path.file_stem().unwrap().to_str().unwrap();
+        let source = fs::read_to_string(&path).unwrap();
+        let source = rewrite_source(name, source);
+
+        fs::write(
+            format!(
+                "{}/out/{}",
+                TEMPLATES_DIR,
+                path.file_name().unwrap().to_str().unwrap()
+            ),
+            source,
+        )
+        .unwrap();
+    }
 }
