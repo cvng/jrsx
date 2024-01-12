@@ -17,7 +17,7 @@ pub(crate) fn rewrite_path<P>(path: P) -> String
 where
     P: AsRef<Path>,
 {
-    let macro_name = normalize(path.as_ref());
+    let macro_name = normalize(&path);
     let macro_import = path.as_ref().display();
 
     format!("{{%- import \"{macro_import}\" as scope -%}}\n{{% call scope::{macro_name}() %}}\n")
