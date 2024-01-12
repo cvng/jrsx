@@ -1,1 +1,0 @@
-pub use derive::template;

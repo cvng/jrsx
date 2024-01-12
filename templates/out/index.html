@@ -1,6 +1,0 @@
-{%- import "hello.html" as hello_scope -%}
-{% macro index() %}
-{% call hello_scope::hello(name) %}
-{% call hello_scope::hello(name=name) %}
-{% call hello_scope::hello(name="world") %}
-{% endmacro %}

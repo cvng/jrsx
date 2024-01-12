@@ -15,15 +15,9 @@ mod generator;
 use generator::{Generator, MapChain};
 mod heritage;
 use heritage::{Context, Heritage};
-mod extra;
-use extra::rewrite_template;
 mod input;
 use input::{Print, TemplateArgs, TemplateInput};
-
-#[proc_macro_attribute]
-pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
-    rewrite_template(args, input)
-}
+mod rewrite;
 
 #[proc_macro_derive(Template, attributes(template))]
 pub fn derive_template(input: TokenStream) -> TokenStream {
