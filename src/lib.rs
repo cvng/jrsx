@@ -44,7 +44,7 @@ pub fn template(args: TokenStream, input: TokenStream) -> TokenStream {
         {{% call scope::{name}() %}}"
     );
 
-    build_templates(); //
+    copy_templates(); //
 
     quote! {
         #[derive(::askama::Template)]
@@ -60,15 +60,17 @@ fn rewrite_source(name: &str, source: String) -> String {
     let source = re.replace_all(&source, rewrite_component).into_owned();
     let name = name.replace('.', "_");
     let mut args = String::new();
-    if let Some(caps) = Regex::new(COMPONENT_ARG_RE).unwrap().captures(&source) {
+    let re2 = Regex::new(COMPONENT_ARG_RE).unwrap();
+    if let Some(caps) = re2.captures(&source) {
         args = caps.get(1).unwrap().as_str().to_string();
     }
+    let source = re2.replace_all(&source, "");
 
     format!(
         "\
-        {import}\n\
+        {import}\
         {{% macro {name}({args}) %}}\n\
-        {source}\n\
+        {source}\
         {{% endmacro %}}\n",
     )
 }
@@ -108,14 +110,14 @@ fn test_rewrite_source() {
     assert_eq!(
         rewrite_source("index", "<Hello name />".to_string()),
         "\
-        {%- import \"hello.html\" as hello_scope -%}\n\n\
+        {%- import \"hello.html\" as hello_scope -%}\n\
         {% macro index() %}\n\
-        {% call hello_scope::hello(name) %}\n\
+        {% call hello_scope::hello(name) %}\
         {% endmacro %}\n"
     );
 }
 
-fn build_templates() {
+fn copy_templates() {
     for path in fs::read_dir(format!("{}/in", TEMPLATES_DIR))
         .unwrap()
         .map(|res| res.map(|e| e.path()))
