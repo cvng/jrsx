@@ -11,8 +11,8 @@ fn test_template() {
     assert_eq!(
         Index { name: "world" }.to_string(),
         "\n\n\n\n\
-        <h1>Hello, world!</h1>\n\n\n\n\
-        <h1>Hello, world!</h1>\n\n\n\n\
-        <h1>Hello, world!</h1>"
+        <h1>Hello, world!</h1>\n\n\n\n\n\
+        <h1>Hello, world!</h1>\n\n\n\n\n\
+        <h1>Hello, world!</h1>\n\n"
     );
 }
