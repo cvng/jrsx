@@ -116,17 +116,6 @@ fn test_rewrite_source() {
 }
 
 fn build_templates() {
-    dircpy::copy_dir_advanced(
-        format!("{}/in", TEMPLATES_DIR),
-        format!("{}/out", TEMPLATES_DIR),
-        true,
-        true,
-        true,
-        Vec::new(),
-        Vec::new(),
-    )
-    .unwrap();
-
     for path in fs::read_dir(format!("{}/in", TEMPLATES_DIR))
         .unwrap()
         .map(|res| res.map(|e| e.path()))
@@ -137,7 +126,14 @@ fn build_templates() {
         let source = fs::read_to_string(&path).unwrap();
         let source = rewrite_source(name, source);
 
-        let out = format!("{}/out/{}", TEMPLATES_DIR, path.display());
-        fs::write(out, source).unwrap();
+        fs::write(
+            format!(
+                "{}/out/{}",
+                TEMPLATES_DIR,
+                path.file_name().unwrap().to_str().unwrap()
+            ),
+            source,
+        )
+        .unwrap();
     }
 }
