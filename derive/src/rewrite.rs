@@ -9,7 +9,7 @@ static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
         r#"({}|{}|{})"#,
         r#"(?<jsx><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
         r#"(?<def>\{#def\s+(.+)\s+#\})"#,                    // {#def name #}
-        r#"(?<src>.*[\w+\s+]*)"#,
+        r#"(?<txt>.*[\w+\s+]*)"#,
     ))
     .unwrap()
 });
@@ -86,7 +86,7 @@ impl<'a> Ast<'a> {
 
                     nodes.push(Node::MacroDef(MacroDef { args }));
                 }
-                caps if caps.name("src").is_some() => {
+                caps if caps.name("txt").is_some() => {
                     nodes.push(Node::Source(caps[7].to_owned()));
                 }
                 _ => unreachable!(),
