@@ -15,10 +15,10 @@ static MACRO_DEF_RE: Lazy<Regex> = Lazy::new(|| {
 
 static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        "({}|{}|{})",
-        format!(r#"(?<jsx>{})"#, JSX_BLOCK_RE.as_str()),
-        format!(r#"(?<def>{})"#, MACRO_DEF_RE.as_str()),
-        format!(r#"(?<src>{})"#, r#"[\w+\s+]*"#),
+        r#"((?<jsx>{})|(?<def>{})|(?<src>{}))"#,
+        JSX_BLOCK_RE.as_str(),
+        MACRO_DEF_RE.as_str(),
+        r#"[\w+\s+]*"#,
     ))
     .unwrap()
 });
