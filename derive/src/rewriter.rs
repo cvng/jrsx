@@ -6,12 +6,13 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
 
+// TODO: r#"(?<end></([A-Z][a-zA-Z0-9]*)\s*>)"#,              // </Hello>
 static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
         r#"({}|{}|{})"#,
         r#"(?<jsx><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
         r#"(?<def>\{#def\s+(.+)\s+#\})"#,                    // {#def name #}
-        r#"(?<txt>.*[\w+\s+]*)"#,
+        r#"(?<raw>.*[\w+\s+]*)"#,
     ))
     .unwrap()
 });
@@ -43,21 +44,32 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-struct JsxBlock {
+struct JsxStart {
     name: String,
     args: Vec<String>,
 }
 
 #[derive(Debug, PartialEq)]
-struct MacroDef {
+struct JsxEnd {
+    name: String,
+}
+
+#[derive(Debug, PartialEq)]
+struct MacroArgs {
     args: Vec<String>,
 }
 
 #[derive(Debug, PartialEq)]
+struct Source {
+    text: String,
+}
+
+#[derive(Debug, PartialEq)]
 enum Node {
-    JsxBlock(JsxBlock),
-    MacroDef(MacroDef),
-    Source(String),
+    JsxStart(JsxStart),
+    JsxEnd(JsxEnd),
+    MacroArgs(MacroArgs),
+    Source(Source),
 }
 
 #[derive(Debug)]
@@ -70,6 +82,7 @@ impl Ast {
         let mut nodes = Vec::new();
 
         for caps in SYNTAX_RE.captures_iter(src) {
+            // dbg!(&caps);
             match caps {
                 caps if caps.name("jsx").is_some() => {
                     let name = caps[3].to_owned();
@@ -78,7 +91,12 @@ impl Ast {
                         .map(|s| s.to_owned())
                         .collect();
 
-                    nodes.push(Node::JsxBlock(JsxBlock { name, args }));
+                    nodes.push(Node::JsxStart(JsxStart { name, args }));
+                }
+                caps if caps.name("end").is_some() => {
+                    let name = caps[5].to_owned();
+
+                    nodes.push(Node::JsxEnd(JsxEnd { name }));
                 }
                 caps if caps.name("def").is_some() => {
                     let args = caps[6]
@@ -86,10 +104,12 @@ impl Ast {
                         .map(|s| s.to_owned())
                         .collect();
 
-                    nodes.push(Node::MacroDef(MacroDef { args }));
+                    nodes.push(Node::MacroArgs(MacroArgs { args }));
                 }
-                caps if caps.name("txt").is_some() => {
-                    nodes.push(Node::Source(caps[7].to_owned()));
+                caps if caps.name("raw").is_some() => {
+                    nodes.push(Node::Source(Source {
+                        text: caps[7].to_owned(),
+                    }));
                 }
                 _ => unreachable!(),
             }
@@ -125,33 +145,53 @@ impl Rewriter {
                 .nodes
                 .iter()
                 .filter_map(|node| match node {
-                    Node::JsxBlock(node) => Some(node),
+                    Node::JsxStart(node) => Some(node),
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
         )?;
 
+        // Wrap template in a macro definition.
         self.write_macro_def(
             buf,
             macro_name,
             self.ast.nodes.iter().find_map(|node| match node {
-                Node::MacroDef(node) => Some(node),
+                Node::MacroArgs(node) => Some(node),
                 _ => None,
             }),
         )?;
 
         self.visit_nodes(buf, &self.ast.nodes)?;
 
-        self.write_macro_end(buf, macro_name)?;
+        self.write_macro_def_end(buf, macro_name)?;
 
         Ok(())
     }
 
-    fn write_imports(&self, buf: &mut Buffer, blocks: &[&JsxBlock]) -> Result<(), CompileError> {
+    fn visit_nodes(&self, buf: &mut Buffer, nodes: &[Node]) -> Result<(), CompileError> {
+        for node in nodes {
+            match node {
+                Node::JsxStart(node) => {
+                    self.write_macro_call(buf, node)?;
+                }
+                Node::JsxEnd(node) => {
+                    self.write_macro_call_end(buf, node)?;
+                }
+                Node::Source(source) => {
+                    buf.write(&source.text);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_imports(&self, buf: &mut Buffer, tags: &[&JsxStart]) -> Result<(), CompileError> {
         let mut imports = HashSet::new();
 
-        for block in blocks {
-            let macro_name = normalize(&block.name);
+        for tag in tags {
+            let macro_name = normalize(&tag.name);
             let macro_path = format!("{macro_name}.html");
 
             if imports.insert(macro_name.clone()) {
@@ -168,40 +208,30 @@ impl Rewriter {
         &self,
         buf: &mut Buffer,
         macro_name: &str,
-        macro_args: Option<&MacroDef>,
+        macro_args: Option<&MacroArgs>,
     ) -> Result<(), CompileError> {
         let macro_args = macro_args.map(|m| m.args.join(", ")).unwrap_or_default();
 
         buf.writeln(&format!("{{% macro {macro_name}({macro_args}) %}}"))
     }
 
-    fn write_macro_end(&self, buf: &mut Buffer, macro_name: &str) -> Result<(), CompileError> {
+    fn write_macro_def_end(&self, buf: &mut Buffer, macro_name: &str) -> Result<(), CompileError> {
         buf.writeln(&format!("{{% endmacro {macro_name} %}}"))
     }
 
-    fn visit_nodes(&self, buf: &mut Buffer, nodes: &[Node]) -> Result<(), CompileError> {
-        for node in nodes {
-            match node {
-                Node::JsxBlock(node) => {
-                    self.write_macro_call(buf, node)?;
-                }
-                Node::Source(source) => {
-                    buf.write(source);
-                }
-                _ => {}
-            }
-        }
+    fn write_macro_call(&self, buf: &mut Buffer, tag: &JsxStart) -> Result<(), CompileError> {
+        let macro_name = normalize(&tag.name);
+        let macro_args = tag.args.join(", ");
 
+        buf.write(&format!(
+            "{{% call {macro_name}_scope::{macro_name}({macro_args}) %}}"
+        ));
         Ok(())
     }
 
-    fn write_macro_call(&self, buf: &mut Buffer, block: &JsxBlock) -> Result<(), CompileError> {
-        let macro_name = normalize(&block.name);
-        let macro_args = block.args.join(", ");
-
-        buf.writeln(&format!(
-            "{{% call {macro_name}_scope::{macro_name}({macro_args}) %}}"
-        ))
+    fn write_macro_call_end(&self, buf: &mut Buffer, _tag: &JsxEnd) -> Result<(), CompileError> {
+        buf.write("{% endcall %}");
+        Ok(())
     }
 }
 
@@ -235,8 +265,7 @@ fn test_rewrite_source() {
         "\
         {%- import \"hello.html\" as hello_scope -%}\n\
         {% macro index() %}\n\
-        {% call hello_scope::hello(name) %}\n\
-        {% endmacro index %}\n"
+        {% call hello_scope::hello(name) %}{% endmacro index %}\n"
     );
 }
 
@@ -252,19 +281,33 @@ fn test_parsed() {
     let parsed = |s| Ast::from_str(s).unwrap();
 
     assert_eq!(parsed("<Hello name />").nodes.len(), 1);
+
     assert_eq!(
         parsed("<Hello name />").nodes.first(),
-        Some(&Node::JsxBlock(JsxBlock {
+        Some(&Node::JsxStart(JsxStart {
             name: "Hello".into(),
             args: vec!["name".into()],
         }))
     );
+
     assert_eq!(
         parsed("Test\n<Hello name />").nodes.first(),
-        Some(&Node::Source("Test\n".into()))
+        Some(&Node::Source(Source {
+            text: "Test\n".into()
+        }))
     );
+
     assert_eq!(
         parsed("<Hello name />\nTest").nodes.last(),
-        Some(&Node::Source("\nTest".into()))
+        Some(&Node::Source(Source {
+            text: "\nTest".into()
+        }))
+    );
+
+    assert_eq!(
+        parsed("</Hello>").nodes.first(),
+        Some(&Node::JsxEnd(JsxEnd {
+            name: "Hello".into()
+        }))
     );
 }
