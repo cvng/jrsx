@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use parser::ParseError;
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
@@ -12,29 +13,6 @@ static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     ))
     .unwrap()
 });
-
-#[derive(Debug, PartialEq)]
-struct Ast {
-    nodes: Vec<Node>,
-}
-
-#[derive(Debug, PartialEq)]
-enum Node {
-    JsxBlock(JsxBlock),
-    MacroDef(MacroDef),
-    Source(String),
-}
-
-#[derive(Debug, PartialEq)]
-struct JsxBlock {
-    name: String,
-    args: Vec<String>,
-}
-
-#[derive(Debug, PartialEq)]
-struct MacroDef {
-    args: Vec<String>,
-}
 
 pub(crate) fn rewrite_path<P>(path: P) -> String
 where
@@ -52,7 +30,7 @@ where
 {
     let mut buf = String::with_capacity(source.capacity());
 
-    let ast = parsed(source);
+    let ast = Ast::from_str(&source).unwrap();
     let macro_name = normalize(path);
 
     visit_ast(&mut buf, &ast, &macro_name);
@@ -60,39 +38,66 @@ where
     buf
 }
 
-fn parsed(source: String) -> Ast {
-    let mut nodes = Vec::new();
-
-    for caps in SYNTAX_RE.captures_iter(&source) {
-        match caps {
-            caps if caps.name("jsx").is_some() => {
-                let name = caps[3].to_owned();
-                let args = caps[4]
-                    .split_ascii_whitespace()
-                    .map(|s| s.to_owned())
-                    .collect();
-
-                nodes.push(Node::JsxBlock(JsxBlock { name, args }));
-            }
-            caps if caps.name("def").is_some() => {
-                let args = caps[6]
-                    .split_ascii_whitespace()
-                    .map(|s| s.to_owned())
-                    .collect();
-
-                nodes.push(Node::MacroDef(MacroDef { args }));
-            }
-            caps if caps.name("src").is_some() => {
-                nodes.push(Node::Source(caps[7].to_owned()));
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    Ast { nodes }
+#[derive(Debug, PartialEq)]
+struct JsxBlock {
+    name: String,
+    args: Vec<String>,
 }
 
-fn visit_ast(buf: &mut String, ast: &Ast, macro_name: &str) {
+#[derive(Debug, PartialEq)]
+struct MacroDef {
+    args: Vec<String>,
+}
+
+#[derive(Debug, PartialEq)]
+enum Node {
+    JsxBlock(JsxBlock),
+    MacroDef(MacroDef),
+    Source(String),
+}
+
+#[derive(Debug)]
+struct Ast<'a> {
+    nodes: Vec<Node>,
+    #[allow(dead_code)]
+    source: &'a str,
+}
+
+impl<'a> Ast<'a> {
+    fn from_str(source: &'a str) -> Result<Self, ParseError> {
+        let mut nodes = Vec::new();
+
+        for caps in SYNTAX_RE.captures_iter(source) {
+            match caps {
+                caps if caps.name("jsx").is_some() => {
+                    let name = caps[3].to_owned();
+                    let args = caps[4]
+                        .split_ascii_whitespace()
+                        .map(|s| s.to_owned())
+                        .collect();
+
+                    nodes.push(Node::JsxBlock(JsxBlock { name, args }));
+                }
+                caps if caps.name("def").is_some() => {
+                    let args = caps[6]
+                        .split_ascii_whitespace()
+                        .map(|s| s.to_owned())
+                        .collect();
+
+                    nodes.push(Node::MacroDef(MacroDef { args }));
+                }
+                caps if caps.name("src").is_some() => {
+                    nodes.push(Node::Source(caps[7].to_owned()));
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        Ok(Self { nodes, source })
+    }
+}
+
+fn visit_ast(buf: &mut String, ast: &Ast<'_>, macro_name: &str) {
     write_imports(
         buf,
         &ast.nodes
@@ -200,20 +205,22 @@ fn test_normalize() {
 
 #[test]
 fn test_parsed() {
-    assert_eq!(parsed("<Hello name />".into()).nodes.len(), 1);
+    let parsed = |s| Ast::from_str(s).unwrap();
+
+    assert_eq!(parsed("<Hello name />").nodes.len(), 1);
     assert_eq!(
-        parsed("<Hello name />".into()).nodes.first(),
+        parsed("<Hello name />").nodes.first(),
         Some(&Node::JsxBlock(JsxBlock {
             name: "Hello".into(),
             args: vec!["name".into()],
         }))
     );
     assert_eq!(
-        parsed("Test\n<Hello name />".into()).nodes.first(),
+        parsed("Test\n<Hello name />").nodes.first(),
         Some(&Node::Source("Test\n".into()))
     );
     assert_eq!(
-        parsed("<Hello name />\nTest".into()).nodes.last(),
+        parsed("<Hello name />\nTest").nodes.last(),
         Some(&Node::Source("\nTest".into()))
     );
 }
