@@ -311,7 +311,7 @@ fn test_parsed() {
     );
 
     assert_eq!(
-        parsed("Test</Hello>").nodes.last(),
+        parsed("Test\n</Hello>").nodes.last(),
         Some(&Node::JsxEnd(JsxEnd {
             name: "Hello".into()
         }))
