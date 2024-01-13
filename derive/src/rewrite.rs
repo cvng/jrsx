@@ -8,7 +8,7 @@ static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
         r#"({}|{}|{})"#,
         r#"(?<jsx><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
         r#"(?<def>\{#def\s+(.+)\s+#\})"#,                    // {#def name #}
-        r#"(?<src>[\w+\s+]*)"#,
+        r#"(?<src>.*[\w+\s+]*)"#,
     ))
     .unwrap()
 });
