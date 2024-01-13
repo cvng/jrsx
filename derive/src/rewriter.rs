@@ -9,10 +9,10 @@ use std::path::Path;
 static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
         r#"({}|{}|{}|{})"#,
-        r#"(?<jsx><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
-        r#"(?<end></([A-Z][a-zA-Z0-9]*)\s*>)"#,              // </Hello>
-        r#"(?<def>\{#def\s+(.+)\s+#\})"#,                    // {#def name #}
-        r#"(?<raw>.*[\w+\s+]*)"#,
+        r#"(?<jsx_start><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
+        r#"(?<jsx_end></([A-Z][a-zA-Z0-9]*)\s*>)"#,                // </Hello>
+        r#"(?<macro_args>\{#def\s+(.+)\s+#\})"#,                   // {#def name #}
+        r#"(?<source>.*[\w+\s+]*)"#,
     ))
     .unwrap()
 });
@@ -83,7 +83,7 @@ impl Ast {
 
         for caps in SYNTAX_RE.captures_iter(src) {
             match caps {
-                caps if caps.name("jsx").is_some() => {
+                caps if caps.name("jsx_start").is_some() => {
                     nodes.push(Node::JsxStart(JsxStart {
                         name: caps[3].to_owned(),
                         args: caps[4]
@@ -92,12 +92,12 @@ impl Ast {
                             .collect(),
                     }));
                 }
-                caps if caps.name("end").is_some() => {
+                caps if caps.name("jsx_end").is_some() => {
                     nodes.push(Node::JsxEnd(JsxEnd {
                         name: caps[6].to_owned(),
                     }));
                 }
-                caps if caps.name("def").is_some() => {
+                caps if caps.name("macro_args").is_some() => {
                     nodes.push(Node::MacroArgs(MacroArgs {
                         args: caps[8]
                             .split_ascii_whitespace()
@@ -105,7 +105,7 @@ impl Ast {
                             .collect(),
                     }));
                 }
-                caps if caps.name("raw").is_some() => {
+                caps if caps.name("source").is_some() => {
                     nodes.push(Node::Source(Source {
                         text: caps[9].to_owned(),
                     }));
