@@ -1750,9 +1750,9 @@ impl<'a> Generator<'a> {
     }
 }
 
-struct Buffer {
+pub(crate) struct Buffer {
     // The buffer to generate the code into
-    buf: String,
+    pub(crate) buf: String,
     // The current level of indentation (in spaces)
     indent: u8,
     // Whether the output buffer is currently at the start of a line
@@ -1760,7 +1760,7 @@ struct Buffer {
 }
 
 impl Buffer {
-    fn new(indent: u8) -> Self {
+    pub(crate) fn new(indent: u8) -> Self {
         Self {
             buf: String::new(),
             indent,
@@ -1768,7 +1768,7 @@ impl Buffer {
         }
     }
 
-    fn writeln(&mut self, s: &str) -> Result<(), CompileError> {
+    pub(crate) fn writeln(&mut self, s: &str) -> Result<(), CompileError> {
         if s == "}" {
             self.dedent()?;
         }
@@ -1783,7 +1783,7 @@ impl Buffer {
         Ok(())
     }
 
-    fn write(&mut self, s: &str) {
+    pub(crate) fn write(&mut self, s: &str) {
         if self.start {
             for _ in 0..(self.indent * 4) {
                 self.buf.push(' ');
