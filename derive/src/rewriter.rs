@@ -84,26 +84,26 @@ impl Ast {
         for caps in SYNTAX_RE.captures_iter(src) {
             match caps {
                 caps if caps.name("jsx").is_some() => {
-                    let name = caps[3].to_owned();
-                    let args = caps[4]
-                        .split_ascii_whitespace()
-                        .map(|s| s.to_owned())
-                        .collect();
-
-                    nodes.push(Node::JsxStart(JsxStart { name, args }));
+                    nodes.push(Node::JsxStart(JsxStart {
+                        name: caps[3].to_owned(),
+                        args: caps[4]
+                            .split_ascii_whitespace()
+                            .map(|s| s.to_owned())
+                            .collect(),
+                    }));
                 }
                 caps if caps.name("end").is_some() => {
-                    let name = caps[6].to_owned();
-
-                    nodes.push(Node::JsxEnd(JsxEnd { name }));
+                    nodes.push(Node::JsxEnd(JsxEnd {
+                        name: caps[6].to_owned(),
+                    }));
                 }
                 caps if caps.name("def").is_some() => {
-                    let args = caps[8]
-                        .split_ascii_whitespace()
-                        .map(|s| s.to_owned())
-                        .collect();
-
-                    nodes.push(Node::MacroArgs(MacroArgs { args }));
+                    nodes.push(Node::MacroArgs(MacroArgs {
+                        args: caps[8]
+                            .split_ascii_whitespace()
+                            .map(|s| s.to_owned())
+                            .collect(),
+                    }));
                 }
                 caps if caps.name("raw").is_some() => {
                     nodes.push(Node::Source(Source {
