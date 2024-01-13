@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
@@ -25,6 +23,7 @@ static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
+#[derive(Debug, PartialEq)]
 struct Ast {
     nodes: Vec<Node>,
 }
@@ -44,7 +43,6 @@ struct JsxBlock {
 
 #[derive(Debug, PartialEq)]
 struct MacroDef {
-    name: String,
     args: Vec<String>,
 }
 
@@ -54,7 +52,6 @@ fn parsed(source: &str) -> Ast {
     for caps in SYNTAX_RE.captures_iter(source) {
         match caps {
             caps if caps.name("jsx").is_some() => {
-                dbg!("jsx", &caps);
                 let name = caps[3].to_owned();
                 let args = caps[4]
                     .split_ascii_whitespace()
@@ -64,17 +61,14 @@ fn parsed(source: &str) -> Ast {
                 nodes.push(Node::JsxBlock(JsxBlock { name, args }));
             }
             caps if caps.name("def").is_some() => {
-                dbg!("def", &caps);
-                let name = caps[1].to_owned();
-                let args = caps[2]
+                let args = caps[6]
                     .split_ascii_whitespace()
                     .map(|s| s.to_owned())
                     .collect();
 
-                nodes.push(Node::MacroDef(MacroDef { name, args }));
+                nodes.push(Node::MacroDef(MacroDef { args }));
             }
             caps if caps.name("src").is_some() => {
-                dbg!("src", &caps);
                 nodes.push(Node::Source(caps[7].to_owned()));
             }
             _ => unreachable!(),
@@ -100,6 +94,9 @@ where
 {
     let mut buf = String::with_capacity(source.capacity());
     let macro_name = normalize(path);
+
+    let parsed = parsed(&source);
+    dbg!(&parsed);
 
     write_imports(&mut buf, &source);
     write_macro_def(&mut buf, &source, &macro_name);
