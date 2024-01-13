@@ -1,3 +1,4 @@
+use crate::generator::Buffer;
 use crate::CompileError;
 use once_cell::sync::Lazy;
 use parser::ParseError;
@@ -15,18 +16,18 @@ static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-pub(crate) fn rewrite_path<P>(path: P) -> Result<String, CompileError>
+pub(crate) fn rewrite_path<P>(path: P) -> String
 where
     P: AsRef<Path>,
 {
     let macro_name = normalize(&path);
-    let macro_import = path.as_ref().display();
+    let macro_path = path.as_ref().display();
 
-    let source = format!(
-        "{{%- import \"{macro_import}\" as scope -%}}\n{{% call scope::{macro_name}() %}}\n"
-    );
-
-    Ok(source)
+    format!(
+        "\
+        {{%- import \"{macro_path}\" as {macro_name}_scope -%}}\n\
+        {{% call {macro_name}_scope::{macro_name}() %}}\n"
+    )
 }
 
 pub(crate) fn rewrite_source<P>(path: P, source: String) -> Result<String, CompileError>
@@ -35,10 +36,8 @@ where
 {
     let macro_name = normalize(path);
 
-    let ast = Ast::from_str(&source)?;
-    let rew = Rewriter::new(ast);
-
-    let source = rew.rewrite(&macro_name, source.capacity())?;
+    let parsed = Ast::from_str(&source)?;
+    let source = Rewriter::new(parsed).build(&macro_name)?;
 
     Ok(source)
 }
@@ -109,15 +108,16 @@ impl Rewriter {
         Self { ast }
     }
 
-    fn rewrite(&self, macro_name: &str, size_hint: usize) -> Result<String, CompileError> {
-        let mut buf = String::with_capacity(size_hint);
+    fn build(&self, macro_name: &str) -> Result<String, CompileError> {
+        let mut buf = Buffer::new(0);
 
-        self.visit_ast(&mut buf, macro_name);
+        self.rewrite_template(&mut buf, macro_name)?;
 
-        Ok(buf)
+        Ok(buf.buf)
     }
 
-    fn visit_ast(&self, buf: &mut String, macro_name: &str) {
+    fn rewrite_template(&self, buf: &mut Buffer, macro_name: &str) -> Result<(), CompileError> {
+        // Collect imports at the top level. https://github.com/djc/askama/issues/931
         self.write_imports(
             buf,
             &self
@@ -129,7 +129,7 @@ impl Rewriter {
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
-        );
+        )?;
 
         self.write_macro_def(
             buf,
@@ -138,59 +138,70 @@ impl Rewriter {
                 Node::MacroDef(node) => Some(node),
                 _ => None,
             }),
-        );
+        )?;
 
-        self.visit_nodes(buf, &self.ast.nodes);
+        self.visit_nodes(buf, &self.ast.nodes)?;
 
-        self.write_macro_end(buf, macro_name);
+        self.write_macro_end(buf, macro_name)?;
+
+        Ok(())
     }
 
-    fn write_imports(&self, buf: &mut String, blocks: &[&JsxBlock]) {
+    fn write_imports(&self, buf: &mut Buffer, blocks: &[&JsxBlock]) -> Result<(), CompileError> {
         let mut imports = HashSet::new();
 
         for block in blocks {
             let macro_name = normalize(&block.name);
-            let macro_import = format!("{macro_name}.html");
+            let macro_path = format!("{macro_name}.html");
 
             if imports.insert(macro_name.clone()) {
-                buf.push_str(&format!(
-                    "{{%- import \"{macro_import}\" as {macro_name}_scope -%}}\n",
-                ));
+                buf.writeln(&format!(
+                    "{{%- import \"{macro_path}\" as {macro_name}_scope -%}}",
+                ))?;
             }
         }
+
+        Ok(())
     }
 
-    fn write_macro_def(&self, buf: &mut String, macro_name: &str, macro_def: Option<&MacroDef>) {
-        let macro_args = macro_def.map(|m| m.args.join(", ")).unwrap_or_default();
+    fn write_macro_def(
+        &self,
+        buf: &mut Buffer,
+        macro_name: &str,
+        macro_args: Option<&MacroDef>,
+    ) -> Result<(), CompileError> {
+        let macro_args = macro_args.map(|m| m.args.join(", ")).unwrap_or_default();
 
-        buf.push_str(&format!("{{% macro {macro_name}({macro_args}) %}}\n"));
+        buf.writeln(&format!("{{% macro {macro_name}({macro_args}) %}}"))
     }
 
-    fn write_macro_end(&self, buf: &mut String, macro_name: &str) {
-        buf.push_str(&format!("{{% endmacro {macro_name} %}}\n"));
+    fn write_macro_end(&self, buf: &mut Buffer, macro_name: &str) -> Result<(), CompileError> {
+        buf.writeln(&format!("{{% endmacro {macro_name} %}}"))
     }
 
-    fn visit_nodes(&self, buf: &mut String, nodes: &[Node]) {
+    fn visit_nodes(&self, buf: &mut Buffer, nodes: &[Node]) -> Result<(), CompileError> {
         for node in nodes {
             match node {
                 Node::JsxBlock(node) => {
-                    self.write_macro_call(buf, node);
+                    self.write_macro_call(buf, node)?;
                 }
                 Node::Source(source) => {
-                    buf.push_str(source);
+                    buf.write(source);
                 }
                 _ => {}
             }
         }
+
+        Ok(())
     }
 
-    fn write_macro_call(&self, buf: &mut String, block: &JsxBlock) {
+    fn write_macro_call(&self, buf: &mut Buffer, block: &JsxBlock) -> Result<(), CompileError> {
         let macro_name = normalize(&block.name);
         let macro_args = block.args.join(", ");
 
-        buf.push_str(&format!(
-            "{{% call {macro_name}_scope::{macro_name}({macro_args}) %}}\n"
-        ));
+        buf.writeln(&format!(
+            "{{% call {macro_name}_scope::{macro_name}({macro_args}) %}}"
+        ))
     }
 }
 
@@ -205,6 +216,16 @@ where
         .unwrap()
         .to_ascii_lowercase()
         .replace(['-', '.'], "_")
+}
+
+#[test]
+fn test_rewrite_path() {
+    assert_eq!(
+        rewrite_path("templates/hello_world.html"),
+        "\
+        {%- import \"templates/hello_world.html\" as hello_world_scope -%}\n\
+        {% call hello_world_scope::hello_world() %}\n"
+    );
 }
 
 #[test]
