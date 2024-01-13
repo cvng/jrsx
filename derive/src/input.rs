@@ -219,7 +219,7 @@ impl TemplateArgs {
                     if args.source.is_some() {
                         return Err("must specify 'source' or 'path', not both".into());
                     }
-                    args.source = Some(Source::Source(crate::rewrite::rewrite_path(s.value())));
+                    args.source = Some(Source::Source(crate::rewriter::rewrite_path(s.value())?));
                     args.ext = Some("html".into());
                 } else {
                     return Err("template path must be string literal".into());

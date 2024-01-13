@@ -1,3 +1,4 @@
+use crate::CompileError;
 use once_cell::sync::Lazy;
 use parser::ParseError;
 use regex::Regex;
@@ -14,28 +15,32 @@ static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-pub(crate) fn rewrite_path<P>(path: P) -> String
+pub(crate) fn rewrite_path<P>(path: P) -> Result<String, CompileError>
 where
     P: AsRef<Path>,
 {
     let macro_name = normalize(&path);
     let macro_import = path.as_ref().display();
 
-    format!("{{%- import \"{macro_import}\" as scope -%}}\n{{% call scope::{macro_name}() %}}\n")
+    let source = format!(
+        "{{%- import \"{macro_import}\" as scope -%}}\n{{% call scope::{macro_name}() %}}\n"
+    );
+
+    Ok(source)
 }
 
-pub(crate) fn rewrite_source<P>(path: P, source: String) -> String
+pub(crate) fn rewrite_source<P>(path: P, source: String) -> Result<String, CompileError>
 where
     P: AsRef<Path>,
 {
-    let mut buf = String::with_capacity(source.capacity());
-
-    let ast = Ast::from_str(&source).unwrap();
     let macro_name = normalize(path);
 
-    visit_ast(&mut buf, &ast, &macro_name);
+    let ast = Ast::from_str(&source)?;
+    let rew = Rewriter::new(ast);
 
-    buf
+    let source = rew.rewrite(&macro_name, source.capacity())?;
+
+    Ok(source)
 }
 
 #[derive(Debug, PartialEq)]
@@ -57,17 +62,15 @@ enum Node {
 }
 
 #[derive(Debug)]
-struct Ast<'a> {
+struct Ast {
     nodes: Vec<Node>,
-    #[allow(dead_code)]
-    source: &'a str,
 }
 
-impl<'a> Ast<'a> {
-    fn from_str(source: &'a str) -> Result<Self, ParseError> {
+impl Ast {
+    fn from_str(src: &str) -> Result<Self, ParseError> {
         let mut nodes = Vec::new();
 
-        for caps in SYNTAX_RE.captures_iter(source) {
+        for caps in SYNTAX_RE.captures_iter(src) {
             match caps {
                 caps if caps.name("jsx").is_some() => {
                     let name = caps[3].to_owned();
@@ -93,82 +96,102 @@ impl<'a> Ast<'a> {
             }
         }
 
-        Ok(Self { nodes, source })
+        Ok(Self { nodes })
     }
 }
 
-fn visit_ast(buf: &mut String, ast: &Ast<'_>, macro_name: &str) {
-    write_imports(
-        buf,
-        &ast.nodes
-            .iter()
-            .filter_map(|node| match node {
-                Node::JsxBlock(node) => Some(node),
+struct Rewriter {
+    ast: Ast,
+}
+
+impl Rewriter {
+    fn new(ast: Ast) -> Self {
+        Self { ast }
+    }
+
+    fn rewrite(&self, macro_name: &str, size_hint: usize) -> Result<String, CompileError> {
+        let mut buf = String::with_capacity(size_hint);
+
+        self.visit_ast(&mut buf, macro_name);
+
+        Ok(buf)
+    }
+
+    fn visit_ast(&self, buf: &mut String, macro_name: &str) {
+        self.write_imports(
+            buf,
+            &self
+                .ast
+                .nodes
+                .iter()
+                .filter_map(|node| match node {
+                    Node::JsxBlock(node) => Some(node),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        self.write_macro_def(
+            buf,
+            macro_name,
+            self.ast.nodes.iter().find_map(|node| match node {
+                Node::MacroDef(node) => Some(node),
                 _ => None,
-            })
-            .collect::<Vec<_>>(),
-    );
+            }),
+        );
 
-    write_macro_def(
-        buf,
-        macro_name,
-        ast.nodes.iter().find_map(|node| match node {
-            Node::MacroDef(node) => Some(node),
-            _ => None,
-        }),
-    );
+        self.visit_nodes(buf, &self.ast.nodes);
 
-    visit_nodes(buf, &ast.nodes);
+        self.write_macro_end(buf, macro_name);
+    }
 
-    write_macro_end(buf, macro_name);
-}
+    fn write_imports(&self, buf: &mut String, blocks: &[&JsxBlock]) {
+        let mut imports = HashSet::new();
 
-fn write_imports(buf: &mut String, blocks: &[&JsxBlock]) {
-    let mut imports = HashSet::new();
+        for block in blocks {
+            let macro_name = normalize(&block.name);
+            let macro_import = format!("{macro_name}.html");
 
-    for block in blocks {
+            if imports.insert(macro_name.clone()) {
+                buf.push_str(&format!(
+                    "{{%- import \"{macro_import}\" as {macro_name}_scope -%}}\n",
+                ));
+            }
+        }
+    }
+
+    fn write_macro_def(&self, buf: &mut String, macro_name: &str, macro_def: Option<&MacroDef>) {
+        let macro_args = macro_def.map(|m| m.args.join(", ")).unwrap_or_default();
+
+        buf.push_str(&format!("{{% macro {macro_name}({macro_args}) %}}\n"));
+    }
+
+    fn write_macro_end(&self, buf: &mut String, macro_name: &str) {
+        buf.push_str(&format!("{{% endmacro {macro_name} %}}\n"));
+    }
+
+    fn visit_nodes(&self, buf: &mut String, nodes: &[Node]) {
+        for node in nodes {
+            match node {
+                Node::JsxBlock(node) => {
+                    self.write_macro_call(buf, node);
+                }
+                Node::Source(source) => {
+                    buf.push_str(source);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn write_macro_call(&self, buf: &mut String, block: &JsxBlock) {
         let macro_name = normalize(&block.name);
-        let macro_import = format!("{macro_name}.html");
+        let macro_args = block.args.join(", ");
 
-        if imports.insert(macro_name.clone()) {
-            buf.push_str(&format!(
-                "{{%- import \"{macro_import}\" as {macro_name}_scope -%}}\n",
-            ));
-        }
+        buf.push_str(&format!(
+            "{{% call {macro_name}_scope::{macro_name}({macro_args}) %}}\n"
+        ));
     }
-}
-
-fn write_macro_def(buf: &mut String, macro_name: &str, macro_def: Option<&MacroDef>) {
-    let macro_args = macro_def.map(|m| m.args.join(", ")).unwrap_or_default();
-
-    buf.push_str(&format!("{{% macro {macro_name}({macro_args}) %}}\n"));
-}
-
-fn write_macro_end(buf: &mut String, macro_name: &str) {
-    buf.push_str(&format!("{{% endmacro {macro_name} %}}\n"));
-}
-
-fn visit_nodes(buf: &mut String, nodes: &[Node]) {
-    for node in nodes {
-        match node {
-            Node::JsxBlock(node) => {
-                write_macro_call(buf, node);
-            }
-            Node::Source(source) => {
-                buf.push_str(source);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn write_macro_call(buf: &mut String, block: &JsxBlock) {
-    let macro_name = normalize(&block.name);
-    let macro_args = block.args.join(", ");
-
-    buf.push_str(&format!(
-        "{{% call {macro_name}_scope::{macro_name}({macro_args}) %}}\n"
-    ));
 }
 
 fn normalize<P>(path: P) -> String
@@ -187,7 +210,7 @@ where
 #[test]
 fn test_rewrite_source() {
     assert_eq!(
-        rewrite_source("index", "<Hello name />".into()),
+        rewrite_source("index", "<Hello name />".into()).unwrap(),
         "\
         {%- import \"hello.html\" as hello_scope -%}\n\
         {% macro index() %}\n\
