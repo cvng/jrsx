@@ -4,21 +4,21 @@ use std::collections::HashSet;
 use std::path::Path;
 
 static JSX_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {
-    let re = Regex::new(r#"<([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>"#);
+    let re = Regex::new(r#"<([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>"#); // <Hello name />
     re.unwrap()
 });
 
 static MACRO_DEF_RE: Lazy<Regex> = Lazy::new(|| {
-    let re = Regex::new(r#"\{#def\s+(.+)\s+#\}"#);
+    let re = Regex::new(r#"\{#def\s+(.+)\s+#\}"#); // {#def name #}
     re.unwrap()
 });
 
 static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
         "({}|{}|{})",
-        r#"(?<jsx><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
-        r#"(?<def>\{#def\s+(.+)\s+#\})"#,                    //  {#def name #}
-        r#"(?<src>[\w+\s+]*)"#,
+        format!(r#"(?<jsx>{})"#, JSX_BLOCK_RE.as_str()),
+        format!(r#"(?<def>{})"#, MACRO_DEF_RE.as_str()),
+        format!(r#"(?<src>{})"#, r#"[\w+\s+]*"#),
     ))
     .unwrap()
 });
@@ -93,24 +93,50 @@ where
     P: AsRef<Path>,
 {
     let mut buf = String::with_capacity(source.capacity());
+
+    let ast = parsed(&source);
     let macro_name = normalize(path);
 
-    let parsed = parsed(&source);
-    dbg!(&parsed);
-
-    write_imports(&mut buf, &source);
-    write_macro_def(&mut buf, &source, &macro_name);
-    write_macro_body(&mut buf, source);
-    write_macro_end(&mut buf, &macro_name);
+    visit(&mut buf, &ast, source, &macro_name);
 
     buf
 }
 
-fn write_imports(buf: &mut String, source: &str) {
+fn visit(buf: &mut String, ast: &Ast, source: String, macro_name: &str) {
+    write_imports(
+        buf,
+        ast.nodes
+            .iter()
+            .filter_map(|node| {
+                if let Node::JsxBlock(node) = node {
+                    Some(node)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    write_macro_def(
+        buf,
+        macro_name,
+        ast.nodes.iter().find_map(|node| {
+            if let Node::MacroDef(node) = node {
+                Some(node)
+            } else {
+                None
+            }
+        }),
+    );
+    write_macro_body(buf, source);
+    write_macro_end(buf, macro_name);
+}
+
+fn write_imports(buf: &mut String, blocks: &[&JsxBlock]) {
     let mut imports = HashSet::new();
 
-    for caps in JSX_BLOCK_RE.captures_iter(source) {
-        let macro_name = normalize(&caps[1]);
+    for block in blocks {
+        let macro_name = normalize(&block.name);
         let macro_import = format!("{macro_name}.html");
 
         if imports.insert(macro_name.clone()) {
@@ -121,11 +147,8 @@ fn write_imports(buf: &mut String, source: &str) {
     }
 }
 
-fn write_macro_def(buf: &mut String, source: &str, macro_name: &str) {
-    let macro_args = match MACRO_DEF_RE.captures(source) {
-        Some(caps) => caps[1].to_owned(),
-        None => String::new(),
-    };
+fn write_macro_def(buf: &mut String, macro_name: &str, macro_def: Option<&MacroDef>) {
+    let macro_args = macro_def.map(|m| m.args.join(", ")).unwrap_or_default();
 
     buf.push_str(&format!("{{% macro {macro_name}({macro_args}) %}}\n"));
 }
@@ -181,7 +204,6 @@ fn test_normalize() {
     assert_eq!(normalize("templates/hello_world.html"), "hello_world");
     assert_eq!(normalize("templates/hello-world.html"), "hello_world");
     assert_eq!(normalize("templates/hello.world.html"), "hello_world");
-    // TODO: assert_eq!(normalize("templates/HelloWorld.html"), "hello_world");
 }
 
 #[test]
