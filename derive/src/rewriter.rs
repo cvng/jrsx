@@ -6,11 +6,11 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
 
-// TODO: r#"(?<end></([A-Z][a-zA-Z0-9]*)\s*>)"#,              // </Hello>
 static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        r#"({}|{}|{})"#,
+        r#"({}|{}|{}|{})"#,
         r#"(?<jsx><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
+        r#"(?<end></([A-Z][a-zA-Z0-9]*)\s*>)"#,              // </Hello>
         r#"(?<def>\{#def\s+(.+)\s+#\})"#,                    // {#def name #}
         r#"(?<raw>.*[\w+\s+]*)"#,
     ))
@@ -82,7 +82,6 @@ impl Ast {
         let mut nodes = Vec::new();
 
         for caps in SYNTAX_RE.captures_iter(src) {
-            // dbg!(&caps);
             match caps {
                 caps if caps.name("jsx").is_some() => {
                     let name = caps[3].to_owned();
@@ -94,12 +93,12 @@ impl Ast {
                     nodes.push(Node::JsxStart(JsxStart { name, args }));
                 }
                 caps if caps.name("end").is_some() => {
-                    let name = caps[5].to_owned();
+                    let name = caps[6].to_owned();
 
                     nodes.push(Node::JsxEnd(JsxEnd { name }));
                 }
                 caps if caps.name("def").is_some() => {
-                    let args = caps[6]
+                    let args = caps[8]
                         .split_ascii_whitespace()
                         .map(|s| s.to_owned())
                         .collect();
@@ -108,7 +107,7 @@ impl Ast {
                 }
                 caps if caps.name("raw").is_some() => {
                     nodes.push(Node::Source(Source {
-                        text: caps[7].to_owned(),
+                        text: caps[9].to_owned(),
                     }));
                 }
                 _ => unreachable!(),
