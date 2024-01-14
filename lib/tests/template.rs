@@ -18,13 +18,14 @@ fn test_template() {
 }
 
 #[derive(Template)]
-#[template(
-    source = "{% import \"index2.html\" as scope %}{% call scope::index2() %}Super!{% endcall %}",
-    ext = "html"
-)]
+#[template(path = "index2.html")]
 struct Index2 {}
 
 #[test]
 fn test_template2() {
-    assert_eq!(Index2 {}.to_string(), "\n<div>Super!</div>");
+    assert_eq!(
+        Index2 {}.to_string(),
+        "\n\n\
+        <div>\nSuper!\n</div>\n"
+    );
 }

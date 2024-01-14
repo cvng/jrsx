@@ -839,6 +839,7 @@ impl<'a> Generator<'a> {
         let mut size_hint = 0;
         if let Some(call) = call {
             size_hint = self.handle(ctx, &call.nodes, buf, AstLevel::Nested)?;
+            self.flush_ws(call.ws);
             self.caller_node = None;
         }
         Ok(size_hint)
