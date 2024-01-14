@@ -598,7 +598,7 @@ pub struct Call<'a> {
 
 impl<'a> Call<'a> {
     fn parse(i: &'a str, s: &State<'_>) -> ParseResult<'a, Self> {
-        let mut p = tuple((
+        let mut start = tuple((
             opt(Whitespace::parse),
             ws(keyword("call")),
             cut(tuple((
@@ -606,18 +606,31 @@ impl<'a> Call<'a> {
                 ws(identifier),
                 opt(ws(|nested| Expr::arguments(nested, s.level.get(), true))),
                 opt(Whitespace::parse),
+                |i| s.tag_block_end(i),
             ))),
         ));
-        let (i, (pws, _, (scope, name, args, nws))) = p(i)?;
+        let (i, (pws1, _, (scope, name, args, nws1, _))) = start(i)?;
         let scope = scope.map(|(scope, _)| scope);
-        let args = args.unwrap_or_default();
+
+        let mut end = cut(tuple((
+            |i| Node::many(i, s),
+            cut(tuple((
+                |i| s.tag_block_start(i),
+                opt(Whitespace::parse),
+                ws(keyword("endcall")),
+                opt(Whitespace::parse),
+            ))),
+        )));
+        let (i, (_contents, (_, _pws2, _, _nws2))) = end(i)?;
+
         Ok((
             i,
             Self {
-                ws: Ws(pws, nws),
+                ws: Ws(pws1, nws1),
                 scope,
                 name,
-                args,
+                args: args.unwrap_or_default(),
+                // nodes: contents // TODO: handle contents
             },
         ))
     }

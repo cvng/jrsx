@@ -18,17 +18,10 @@ fn test_template() {
 }
 
 #[derive(Template)]
-#[template(
-    source = "\
-{% macro index() %}{% endmacro %}{% call index() %}{# endcall #}",
-    ext = "html"
-)]
+#[template(path = "index2.html")]
 struct Index2 {}
 
 #[test]
 fn test_template2() {
-    assert_eq!(
-        Index2 {}.to_string(),
-        "", // TODO: "\n\n\n\n<div>{# caller() #}</div>\n"
-    );
+    assert_eq!(Index2 {}.to_string(), "\n\n<div></div>\n");
 }
