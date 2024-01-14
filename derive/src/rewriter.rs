@@ -259,7 +259,7 @@ fn test_rewrite_path() {
         rewrite_path("templates/hello_world.html"),
         "\
         {%- import \"templates/hello_world.html\" as hello_world_scope -%}\n\
-        {% call hello_world_scope::hello_world() %}\n"
+        {% call hello_world_scope::hello_world() %}{% endcall %}\n"
     );
 }
 
@@ -270,7 +270,7 @@ fn test_rewrite_source() {
         "\
         {%- import \"hello.html\" as hello_scope -%}\n\
         {% macro index() %}\n\
-        {% call hello_scope::hello(name) %}{% endmacro index %}\n"
+        {% call hello_scope::hello(name) %}{% endcall %}{% endmacro index %}\n"
     );
 }
 
@@ -292,6 +292,7 @@ fn test_parsed() {
         Some(&Node::JsxStart(JsxStart {
             name: "Hello".into(),
             args: vec!["name".into()],
+            self_closing: true,
         }))
     );
 
