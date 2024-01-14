@@ -691,7 +691,7 @@ impl<'a> Generator<'a> {
             return self.write_block(buf, None, ws);
         }
         if name == "caller" {
-            return self.write_caller(ctx, buf, self.caller_node);
+            return self.write_caller(ctx, buf, ws);
         }
 
         let (def, own_ctx) = match scope {
@@ -834,14 +834,20 @@ impl<'a> Generator<'a> {
         &mut self,
         ctx: &'a Context<'_>,
         buf: &mut Buffer,
-        call: Option<&'a Call<'_>>,
+        outer: Ws,
     ) -> Result<usize, CompileError> {
-        let mut size_hint = 0;
-        if let Some(call) = call {
-            size_hint = self.handle(ctx, &call.nodes, buf, AstLevel::Nested)?;
-            self.flush_ws(call.ws);
-            self.caller_node = None;
-        }
+        self.flush_ws(outer);
+
+        let caller = match self.caller_node {
+            Some(caller) => caller,
+            None => return Err("caller() can only be used inside a macro".into()),
+        };
+
+        let size_hint = self.handle(ctx, &caller.nodes, buf, AstLevel::Nested)?;
+        self.flush_ws(caller.ws);
+
+        self.caller_node = None;
+        self.prepare_ws(outer);
         Ok(size_hint)
     }
 
