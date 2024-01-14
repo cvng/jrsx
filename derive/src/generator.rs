@@ -33,6 +33,8 @@ pub(crate) struct Generator<'a> {
     skip_ws: WhitespaceHandling,
     // If currently in a block, this will contain the name of a potential parent block
     super_block: Option<(&'a str, usize)>,
+    // If currently in a macro call, this will contain the caller node
+    caller_node: Option<&'a Call<'a>>,
     // buffer for writable
     buf_writable: Vec<Writable<'a>>,
     // Counter for write! hash named arguments
@@ -55,6 +57,7 @@ impl<'a> Generator<'a> {
             next_ws: None,
             skip_ws: WhitespaceHandling::Preserve,
             super_block: None,
+            caller_node: None,
             buf_writable: vec![],
             named: 0,
         }
@@ -682,9 +685,13 @@ impl<'a> Generator<'a> {
             scope,
             name,
             ref args,
+            ..
         } = *call;
         if name == "super" {
             return self.write_block(buf, None, ws);
+        }
+        if name == "caller" {
+            return self.write_caller(ctx, buf, ws);
         }
 
         let (def, own_ctx) = match scope {
@@ -709,6 +716,7 @@ impl<'a> Generator<'a> {
                 (def, ctx)
             }
         };
+        self.caller_node = Some(call);
 
         self.flush_ws(ws); // Cannot handle_ws() here: whitespace from macro definition comes first
         self.locals.push();
@@ -819,6 +827,27 @@ impl<'a> Generator<'a> {
         buf.writeln("}")?;
         self.locals.pop();
         self.prepare_ws(ws);
+        Ok(size_hint)
+    }
+
+    fn write_caller(
+        &mut self,
+        ctx: &'a Context<'_>,
+        buf: &mut Buffer,
+        outer: Ws,
+    ) -> Result<usize, CompileError> {
+        self.flush_ws(outer);
+
+        let caller = match self.caller_node {
+            Some(caller) => caller,
+            None => return Err("caller() can only be used inside a macro".into()),
+        };
+
+        let size_hint = self.handle(ctx, &caller.nodes, buf, AstLevel::Nested)?;
+        self.flush_ws(caller.ws);
+
+        self.caller_node = None;
+        self.prepare_ws(outer);
         Ok(size_hint)
     }
 

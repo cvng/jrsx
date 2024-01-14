@@ -60,7 +60,7 @@ pub(crate) fn build_template(ast: &syn::DeriveInput) -> Result<String, CompileEr
     };
 
     if input.print == Print::Ast || input.print == Print::All {
-        eprintln!("{:?}", templates[input.path.as_path()].nodes());
+        eprintln!("{:#?}", templates[input.path.as_path()].nodes());
     }
 
     let code = Generator::new(&input, &contexts, heritage.as_ref(), MapChain::default())

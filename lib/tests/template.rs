@@ -23,5 +23,9 @@ struct Index2 {}
 
 #[test]
 fn test_template2() {
-    assert_eq!(Index2 {}.to_string(), "\n\n<div></div>\n");
+    assert_eq!(
+        Index2 {}.to_string(),
+        "\n\n\
+        <div>\nSuper!\n</div>\n"
+    );
 }
