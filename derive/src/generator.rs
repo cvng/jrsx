@@ -674,20 +674,6 @@ impl<'a> Generator<'a> {
         Ok(flushed + ((size_hint1 * 3) + size_hint2) / 2)
     }
 
-    fn write_caller(
-        &mut self,
-        ctx: &'a Context<'_>,
-        buf: &mut Buffer,
-        call: Option<&'a Call<'_>>,
-    ) -> Result<usize, CompileError> {
-        let mut size_hint = 0;
-        if let Some(call) = call {
-            size_hint = self.handle(ctx, &call.nodes, buf, AstLevel::Nested)?;
-            self.caller_node = None;
-        }
-        Ok(size_hint)
-    }
-
     fn write_call(
         &mut self,
         ctx: &'a Context<'_>,
@@ -841,6 +827,20 @@ impl<'a> Generator<'a> {
         buf.writeln("}")?;
         self.locals.pop();
         self.prepare_ws(ws);
+        Ok(size_hint)
+    }
+
+    fn write_caller(
+        &mut self,
+        ctx: &'a Context<'_>,
+        buf: &mut Buffer,
+        call: Option<&'a Call<'_>>,
+    ) -> Result<usize, CompileError> {
+        let mut size_hint = 0;
+        if let Some(call) = call {
+            size_hint = self.handle(ctx, &call.nodes, buf, AstLevel::Nested)?;
+            self.caller_node = None;
+        }
         Ok(size_hint)
     }
 
