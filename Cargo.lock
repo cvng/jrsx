@@ -77,6 +77,7 @@ dependencies = [
  "basic-toml",
  "mime",
  "mime_guess",
+ "nom",
  "once_cell",
  "parser",
  "proc-macro2",

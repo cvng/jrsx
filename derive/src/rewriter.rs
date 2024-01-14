@@ -1,10 +1,18 @@
+#![allow(unused)]
+
 use crate::generator::Buffer;
 use crate::CompileError;
+use nom::character::complete::alpha1;
+use nom::character::complete::char;
+use nom::character::complete::space0;
+use nom::combinator::opt;
 use once_cell::sync::Lazy;
 use parser::ParseError;
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
+
+type ParseResult<'a, T = &'a str> = nom::IResult<&'a str, T>;
 
 static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
@@ -112,6 +120,51 @@ impl Ast {
 
         Ok(Self { nodes })
     }
+
+    fn _from_str(_src: &str) -> Result<Self, ParseError> {
+        Ok(Self { nodes: Vec::new() })
+    }
+
+    fn jsx_start(i: &str) -> ParseResult<'_, JsxStart> {
+        let (i, _) = char('<')(i)?;
+        let (i, name) = alpha1(i)?;
+        let (i, _) = space0(i)?;
+        let (i, args) = alpha1(i)?;
+        let (i, _) = space0(i)?;
+        let (i, _) = char('>')(i)?;
+        let (i, _) = space0(i)?;
+        let (i, _) = char('<')(i)?;
+        let (i, self_closing) = opt(char('/'))(i)?;
+        let (i, _) = space0(i)?;
+        let (i, _) = alpha1(i)?;
+        let (i, _) = space0(i)?;
+        let (i, _) = char('>')(i)?;
+        let (i, _) = space0(i)?;
+
+        Ok((
+            i,
+            JsxStart {
+                name: name.to_owned(),
+                args: args.split_whitespace().map(|s| s.to_owned()).collect(),
+                self_closing: self_closing.is_some(),
+            },
+        ))
+    }
+}
+
+#[test]
+fn test_jsx_start() {
+    assert_eq!(
+        Ast::jsx_start("<Hello name />"),
+        Ok((
+            "",
+            JsxStart {
+                name: "Hello".into(),
+                args: vec!["name".into()],
+                self_closing: true,
+            }
+        ))
+    );
 }
 
 struct Rewriter {
