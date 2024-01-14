@@ -27,7 +27,7 @@ where
     format!(
         "\
         {{%- import \"{macro_path}\" as {macro_name}_scope -%}}\n\
-        {{% call {macro_name}_scope::{macro_name}() %}}\n"
+        {{% call {macro_name}_scope::{macro_name}() %}}{{% endcall %}}\n"
     )
 }
 
@@ -47,6 +47,7 @@ where
 struct JsxStart {
     name: String,
     args: Vec<String>,
+    self_closing: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -86,10 +87,8 @@ impl Ast {
                 caps if caps.name("jsx_start").is_some() => {
                     nodes.push(Node::JsxStart(JsxStart {
                         name: caps[3].to_owned(),
-                        args: caps[4]
-                            .split_ascii_whitespace()
-                            .map(|s| s.to_owned())
-                            .collect(),
+                        args: caps[4].split_whitespace().map(|s| s.to_owned()).collect(),
+                        self_closing: caps[2].ends_with("/>"),
                     }));
                 }
                 caps if caps.name("jsx_end").is_some() => {
@@ -99,10 +98,7 @@ impl Ast {
                 }
                 caps if caps.name("macro_args").is_some() => {
                     nodes.push(Node::MacroArgs(MacroArgs {
-                        args: caps[8]
-                            .split_ascii_whitespace()
-                            .map(|s| s.to_owned())
-                            .collect(),
+                        args: caps[8].split_whitespace().map(|s| s.to_owned()).collect(),
                     }));
                 }
                 caps if caps.name("source").is_some() => {
@@ -151,7 +147,7 @@ impl Rewriter {
         )?;
 
         // Wrap template in a macro definition.
-        self.write_macro_def(
+        self.write_macro(
             buf,
             macro_name,
             self.ast.nodes.iter().find_map(|node| match node {
@@ -162,7 +158,7 @@ impl Rewriter {
 
         self.visit_nodes(buf, &self.ast.nodes)?;
 
-        self.write_macro_def_end(buf, macro_name)?;
+        self.write_macro_end(buf, macro_name)?;
 
         Ok(())
     }
@@ -171,10 +167,10 @@ impl Rewriter {
         for node in nodes {
             match node {
                 Node::JsxStart(node) => {
-                    self.write_macro_call(buf, node)?;
+                    self.write_call(buf, node)?;
                 }
                 Node::JsxEnd(node) => {
-                    self.write_macro_call_end(buf, node)?;
+                    self.write_call_end(buf, node)?;
                 }
                 Node::Source(source) => {
                     buf.write(&source.text);
@@ -203,7 +199,7 @@ impl Rewriter {
         Ok(())
     }
 
-    fn write_macro_def(
+    fn write_macro(
         &self,
         buf: &mut Buffer,
         macro_name: &str,
@@ -214,21 +210,31 @@ impl Rewriter {
         buf.writeln(&format!("{{% macro {macro_name}({macro_args}) %}}"))
     }
 
-    fn write_macro_def_end(&self, buf: &mut Buffer, macro_name: &str) -> Result<(), CompileError> {
+    fn write_macro_end(&self, buf: &mut Buffer, macro_name: &str) -> Result<(), CompileError> {
         buf.writeln(&format!("{{% endmacro {macro_name} %}}"))
     }
 
-    fn write_macro_call(&self, buf: &mut Buffer, tag: &JsxStart) -> Result<(), CompileError> {
+    fn write_call(&self, buf: &mut Buffer, tag: &JsxStart) -> Result<(), CompileError> {
         let macro_name = normalize(&tag.name);
         let macro_args = tag.args.join(", ");
 
         buf.write(&format!(
             "{{% call {macro_name}_scope::{macro_name}({macro_args}) %}}"
         ));
+
+        if tag.self_closing {
+            self.write_call_end(
+                buf,
+                &JsxEnd {
+                    name: tag.name.clone(),
+                },
+            )?;
+        }
+
         Ok(())
     }
 
-    fn write_macro_call_end(&self, buf: &mut Buffer, _tag: &JsxEnd) -> Result<(), CompileError> {
+    fn write_call_end(&self, buf: &mut Buffer, _tag: &JsxEnd) -> Result<(), CompileError> {
         buf.write("{% endcall %}");
         Ok(())
     }
@@ -243,7 +249,7 @@ where
         .unwrap()
         .to_str()
         .unwrap()
-        .to_ascii_lowercase()
+        .to_lowercase()
         .replace(['-', '.'], "_")
 }
 
@@ -253,7 +259,7 @@ fn test_rewrite_path() {
         rewrite_path("templates/hello_world.html"),
         "\
         {%- import \"templates/hello_world.html\" as hello_world_scope -%}\n\
-        {% call hello_world_scope::hello_world() %}\n"
+        {% call hello_world_scope::hello_world() %}{% endcall %}\n"
     );
 }
 
@@ -264,7 +270,7 @@ fn test_rewrite_source() {
         "\
         {%- import \"hello.html\" as hello_scope -%}\n\
         {% macro index() %}\n\
-        {% call hello_scope::hello(name) %}{% endmacro index %}\n"
+        {% call hello_scope::hello(name) %}{% endcall %}{% endmacro index %}\n"
     );
 }
 
@@ -286,6 +292,7 @@ fn test_parsed() {
         Some(&Node::JsxStart(JsxStart {
             name: "Hello".into(),
             args: vec!["name".into()],
+            self_closing: true,
         }))
     );
 
@@ -305,6 +312,13 @@ fn test_parsed() {
 
     assert_eq!(
         parsed("</Hello>").nodes.first(),
+        Some(&Node::JsxEnd(JsxEnd {
+            name: "Hello".into()
+        }))
+    );
+
+    assert_eq!(
+        parsed("Test\n</Hello>").nodes.last(),
         Some(&Node::JsxEnd(JsxEnd {
             name: "Hello".into()
         }))
