@@ -5,6 +5,7 @@ use crate::CompileError;
 use nom::character::complete::alpha1;
 use nom::character::complete::char;
 use nom::character::complete::space0;
+use nom::character::complete::space1;
 use nom::combinator::opt;
 use once_cell::sync::Lazy;
 use parser::ParseError;
@@ -121,25 +122,14 @@ impl Ast {
         Ok(Self { nodes })
     }
 
-    fn _from_str(_src: &str) -> Result<Self, ParseError> {
-        Ok(Self { nodes: Vec::new() })
-    }
-
     fn jsx_start(i: &str) -> ParseResult<'_, JsxStart> {
         let (i, _) = char('<')(i)?;
-        let (i, name) = alpha1(i)?;
-        let (i, _) = space0(i)?;
-        let (i, args) = alpha1(i)?;
-        let (i, _) = space0(i)?;
-        let (i, _) = char('>')(i)?;
-        let (i, _) = space0(i)?;
-        let (i, _) = char('<')(i)?;
+        let (i, name) = alpha1(i)?; // TODO: is_uppercase
+        let (i, _) = space1(i)?;
+        let (i, args) = alpha1(i)?; // TODO: take_until "/" or ">"
+        let (i, _) = space1(i)?;
         let (i, self_closing) = opt(char('/'))(i)?;
-        let (i, _) = space0(i)?;
-        let (i, _) = alpha1(i)?;
-        let (i, _) = space0(i)?;
         let (i, _) = char('>')(i)?;
-        let (i, _) = space0(i)?;
 
         Ok((
             i,
