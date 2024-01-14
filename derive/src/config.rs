@@ -297,7 +297,7 @@ pub(crate) fn get_source(tpl_path: &Path) -> std::result::Result<String, Compile
 }
 
 pub(crate) fn get_template_source(tpl_path: &Path) -> std::result::Result<String, CompileError> {
-    get_source(tpl_path).and_then(|source| crate::rewriter::rewrite_source(tpl_path, source))
+    get_source(tpl_path) // TODO: .and_then(|source| crate::rewriter::rewrite_source(tpl_path, source))
 }
 
 static CONFIG_FILE_NAME: &str = "askama.toml";

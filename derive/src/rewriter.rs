@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::generator::Buffer;
 use crate::CompileError;
 use once_cell::sync::Lazy;
