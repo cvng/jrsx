@@ -671,6 +671,26 @@ impl<'a> Generator<'a> {
         Ok(flushed + ((size_hint1 * 3) + size_hint2) / 2)
     }
 
+    fn write_caller_block(
+        &mut self,
+        ctx: &'a Context<'_>,
+        buf: &mut Buffer,
+        call: &'a Call<'_>,
+    ) -> Result<usize, CompileError> {
+        let size_hint = self.handle(
+            ctx,
+            &[Node::Lit(Lit {
+                lws: "",
+                val: "caller()",
+                rws: "",
+            })],
+            buf,
+            AstLevel::Nested,
+        )?;
+        dbg!(&call, size_hint);
+        Ok(size_hint)
+    }
+
     fn write_call(
         &mut self,
         ctx: &'a Context<'_>,
@@ -685,6 +705,9 @@ impl<'a> Generator<'a> {
         } = *call;
         if name == "super" {
             return self.write_block(buf, None, ws);
+        }
+        if name == "caller" {
+            return self.write_caller_block(ctx, buf, call);
         }
 
         let (def, own_ctx) = match scope {
