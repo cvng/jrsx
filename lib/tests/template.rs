@@ -19,7 +19,7 @@ fn test_template() {
 
 #[derive(Template)]
 #[template(
-    source = "{% macro test() %}{% call caller() %}{% endcall %}{% endmacro %}{% call test() %}Super!{% endcall %}",
+    source = "{% import \"test.html\" as test_scope %}{% call test_scope::test() %}Super!{% endcall %}",
     ext = "html"
 )]
 struct Index2 {}
