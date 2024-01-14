@@ -33,6 +33,8 @@ pub(crate) struct Generator<'a> {
     skip_ws: WhitespaceHandling,
     // If currently in a block, this will contain the name of a potential parent block
     super_block: Option<(&'a str, usize)>,
+    // If currently in a macro call, this will contain the caller node
+    caller_node: Option<&'a Call<'a>>,
     // buffer for writable
     buf_writable: Vec<Writable<'a>>,
     // Counter for write! hash named arguments
@@ -55,6 +57,7 @@ impl<'a> Generator<'a> {
             next_ws: None,
             skip_ws: WhitespaceHandling::Preserve,
             super_block: None,
+            caller_node: None,
             buf_writable: vec![],
             named: 0,
         }
@@ -671,23 +674,17 @@ impl<'a> Generator<'a> {
         Ok(flushed + ((size_hint1 * 3) + size_hint2) / 2)
     }
 
-    fn write_caller_block(
+    fn write_caller(
         &mut self,
         ctx: &'a Context<'_>,
         buf: &mut Buffer,
-        call: &'a Call<'_>,
+        call: Option<&'a Call<'_>>,
     ) -> Result<usize, CompileError> {
-        let size_hint = self.handle(
-            ctx,
-            &[Node::Lit(Lit {
-                lws: "",
-                val: "caller()",
-                rws: "",
-            })],
-            buf,
-            AstLevel::Nested,
-        )?;
-        dbg!(&call, size_hint);
+        let mut size_hint = 0;
+        if let Some(call) = call {
+            size_hint = self.handle(ctx, &call.nodes, buf, AstLevel::Nested)?;
+            self.caller_node = None;
+        }
         Ok(size_hint)
     }
 
@@ -702,12 +699,13 @@ impl<'a> Generator<'a> {
             scope,
             name,
             ref args,
+            ..
         } = *call;
         if name == "super" {
             return self.write_block(buf, None, ws);
         }
         if name == "caller" {
-            return self.write_caller_block(ctx, buf, call);
+            return self.write_caller(ctx, buf, self.caller_node);
         }
 
         let (def, own_ctx) = match scope {
@@ -732,6 +730,7 @@ impl<'a> Generator<'a> {
                 (def, ctx)
             }
         };
+        self.caller_node = Some(call);
 
         self.flush_ws(ws); // Cannot handle_ws() here: whitespace from macro definition comes first
         self.locals.push();

@@ -594,6 +594,7 @@ pub struct Call<'a> {
     pub scope: Option<&'a str>,
     pub name: &'a str,
     pub args: Vec<Expr<'a>>,
+    pub nodes: Vec<Node<'a>>,
 }
 
 impl<'a> Call<'a> {
@@ -621,7 +622,7 @@ impl<'a> Call<'a> {
                 opt(Whitespace::parse),
             ))),
         )));
-        let (i, (_contents, (_, _pws2, _, _nws2))) = end(i)?;
+        let (i, (contents, (_, _pws2, _, _nws2))) = end(i)?;
 
         Ok((
             i,
@@ -630,7 +631,7 @@ impl<'a> Call<'a> {
                 scope,
                 name,
                 args: args.unwrap_or_default(),
-                // nodes: contents // TODO: handle contents
+                nodes: contents,
             },
         ))
     }
