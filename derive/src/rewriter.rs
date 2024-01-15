@@ -154,7 +154,7 @@ impl Ast {
 }
 
 fn is_uppercase_first(s: &str) -> bool {
-    s.chars().nth(0).map(|s| s.is_uppercase()).unwrap_or(false)
+    s.chars().next().map(|s| s.is_uppercase()).unwrap_or(false)
 }
 
 #[test]
