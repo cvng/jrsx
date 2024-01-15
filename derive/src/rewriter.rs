@@ -2,8 +2,19 @@
 
 use crate::generator::Buffer;
 use crate::CompileError;
-use nom::character::complete;
+use nom::branch::alt;
+use nom::bytes::complete::tag;
+use nom::bytes::complete::take_till;
+use nom::bytes::complete::take_while;
+use nom::character::complete::alpha1;
+use nom::character::complete::char;
+use nom::character::complete::space1;
+use nom::character::is_alphabetic;
+use nom::combinator::cond;
 use nom::combinator::opt;
+use nom::combinator::recognize;
+use nom::combinator::verify;
+use nom::sequence::tuple;
 use once_cell::sync::Lazy;
 use parser::ParseError;
 use regex::Regex;
@@ -120,13 +131,16 @@ impl Ast {
     }
 
     fn jsx_start(i: &str) -> ParseResult<'_, JsxStart> {
-        let (i, _) = complete::char('<')(i)?;
-        let (i, name) = complete::alpha1(i)?; // TODO: is_uppercase
-        let (i, _) = complete::space1(i)?;
-        let (i, args) = complete::alpha1(i)?; // TODO: take_until "/" or ">"
-        let (i, _) = complete::space1(i)?;
-        let (i, self_closing) = opt(complete::char('/'))(i)?;
-        let (i, _) = complete::char('>')(i)?;
+        let mut p = tuple((
+            char('<'),
+            recognize(verify(alpha1, is_uppercase_first)),
+            opt(space1),
+            take_till(|c: char| c.eq(&'/') || c.eq(&'>')),
+            opt(char('/')),
+            char('>'),
+        ));
+
+        let (i, (_, name, _, args, self_closing, _)) = p(i)?;
 
         Ok((
             i,
@@ -139,16 +153,32 @@ impl Ast {
     }
 }
 
+fn is_uppercase_first(s: &str) -> bool {
+    s.chars().nth(0).map(|s| s.is_uppercase()).unwrap_or(false)
+}
+
 #[test]
 fn test_jsx_start() {
     assert_eq!(
-        Ast::jsx_start("<Hello name />"),
+        Ast::jsx_start("<Hello name rest=\"rest\" />"),
         Ok((
             "",
             JsxStart {
                 name: "Hello".into(),
-                args: vec!["name".into()],
+                args: vec!["name".into(), "rest=\"rest\"".into()],
                 self_closing: true,
+            }
+        ))
+    );
+
+    assert_eq!(
+        Ast::jsx_start("<Hello>"),
+        Ok((
+            "",
+            JsxStart {
+                name: "Hello".into(),
+                args: vec![],
+                self_closing: false,
             }
         ))
     );
