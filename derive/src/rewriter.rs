@@ -16,24 +16,11 @@ use nom::combinator::opt;
 use nom::combinator::recognize;
 use nom::combinator::verify;
 use nom::sequence::tuple;
-use once_cell::sync::Lazy;
 use parser::ParseError;
-use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
 
 type ParseResult<'a, T = &'a str> = nom::IResult<&'a str, T>;
-
-static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(&format!(
-        r#"({}|{}|{}|{})"#,
-        r#"(?<jsx_start><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
-        r#"(?<jsx_end></([A-Z][a-zA-Z0-9]*)\s*>)"#,                // </Hello>
-        r#"(?<macro_args>\{#def\s+(.+)\s+#\})"#,                   // {#def name #}
-        r#"(?<source>.*[\w+\s+]*)"#,
-    ))
-    .unwrap()
-});
 
 pub(crate) fn rewrite_path<P>(path: P) -> String
 where
