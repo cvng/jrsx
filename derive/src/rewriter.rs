@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::generator::Buffer;
 use crate::CompileError;
 use nom::branch::alt;
@@ -9,8 +7,6 @@ use nom::bytes::complete::take_while;
 use nom::character::complete::alpha1;
 use nom::character::complete::char;
 use nom::character::complete::space1;
-use nom::character::is_alphabetic;
-use nom::combinator::cond;
 use nom::combinator::map;
 use nom::combinator::opt;
 use nom::combinator::recognize;
@@ -180,7 +176,7 @@ impl Ast {
     }
 
     fn source(i: &str) -> ParseResult<'_, Source> {
-        let mut p = take_while(|c| c != '<' && c != '{');
+        let p = take_while(|c| c != '<' && c != '{');
 
         let (i, text) = p(i)?;
 
