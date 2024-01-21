@@ -1,21 +1,22 @@
 use crate::generator::Buffer;
 use crate::CompileError;
-use once_cell::sync::Lazy;
+use nom::branch::alt;
+use nom::bytes::complete::tag;
+use nom::bytes::complete::take_till;
+use nom::bytes::complete::take_while;
+use nom::character::complete::alpha1;
+use nom::character::complete::char;
+use nom::character::complete::space1;
+use nom::combinator::map;
+use nom::combinator::opt;
+use nom::combinator::recognize;
+use nom::combinator::verify;
+use nom::sequence::tuple;
 use parser::ParseError;
-use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
 
-static SYNTAX_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(&format!(
-        r#"({}|{}|{}|{})"#,
-        r#"(?<jsx_start><([A-Z][a-zA-Z0-9]*)\s*([^>/]*)\s*/*?>)"#, // <Hello name />
-        r#"(?<jsx_end></([A-Z][a-zA-Z0-9]*)\s*>)"#,                // </Hello>
-        r#"(?<macro_args>\{#def\s+(.+)\s+#\})"#,                   // {#def name #}
-        r#"(?<source>.*[\w+\s+]*)"#,
-    ))
-    .unwrap()
-});
+type ParseResult<'a, T = &'a str> = nom::IResult<&'a str, T>;
 
 pub(crate) fn rewrite_path<P>(path: P) -> String
 where
@@ -80,38 +81,182 @@ struct Ast {
 
 impl Ast {
     fn from_str(src: &str) -> Result<Self, ParseError> {
-        let mut nodes = Vec::new();
+        let mut nodes = vec![];
 
-        for caps in SYNTAX_RE.captures_iter(src) {
-            match caps {
-                caps if caps.name("jsx_start").is_some() => {
-                    nodes.push(Node::JsxStart(JsxStart {
-                        name: caps[3].to_owned(),
-                        args: caps[4].split_whitespace().map(|s| s.to_owned()).collect(),
-                        self_closing: caps[2].ends_with("/>"),
-                    }));
-                }
-                caps if caps.name("jsx_end").is_some() => {
-                    nodes.push(Node::JsxEnd(JsxEnd {
-                        name: caps[6].to_owned(),
-                    }));
-                }
-                caps if caps.name("macro_args").is_some() => {
-                    nodes.push(Node::MacroArgs(MacroArgs {
-                        args: caps[8].split_whitespace().map(|s| s.to_owned()).collect(),
-                    }));
-                }
-                caps if caps.name("source").is_some() => {
-                    nodes.push(Node::Source(Source {
-                        text: caps[9].to_owned(),
-                    }));
-                }
-                _ => unreachable!(),
-            }
+        let mut i = src;
+
+        while !i.is_empty() {
+            let (i2, node) = Self::node(i).unwrap(); // TODO: ?
+
+            i = i2;
+
+            nodes.push(node);
         }
 
         Ok(Self { nodes })
     }
+
+    fn node(i: &str) -> ParseResult<'_, Node> {
+        let mut p = alt((
+            map(|i| Self::jsx_start(i), Node::JsxStart),
+            map(|i| Self::jsx_end(i), Node::JsxEnd),
+            map(|i| Self::macro_args(i), Node::MacroArgs),
+            map(|i| Self::source(i), Node::Source),
+        ));
+
+        let (i, node) = p(i)?;
+
+        Ok(dbg!(i, node))
+    }
+
+    fn jsx_start(i: &str) -> ParseResult<'_, JsxStart> {
+        let mut p = tuple((
+            tag("<"),
+            recognize(verify(alpha1, is_uppercase_first)),
+            opt(take_till(|c| c == '>')),
+            char('>'),
+        ));
+
+        let (i, (_, name, args, _)) = p(i)?;
+
+        let args = args
+            .map(|s| s.trim())
+            .unwrap_or("")
+            .split(' ')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned())
+            .collect::<Vec<_>>();
+
+        let self_closing = args.last().map(|s| s.ends_with('/')).unwrap_or(false);
+
+        let args = args
+            .iter()
+            .filter(|s| !s.ends_with('/'))
+            .map(|s| s.to_owned())
+            .collect::<Vec<_>>();
+
+        Ok((
+            i,
+            JsxStart {
+                name: name.to_owned(),
+                args,
+                self_closing,
+            },
+        ))
+    }
+
+    fn jsx_end(i: &str) -> ParseResult<'_, JsxEnd> {
+        let mut p = tuple((
+            tag("</"),
+            recognize(verify(alpha1, is_uppercase_first)),
+            char('>'),
+        ));
+
+        let (i, (_, name, _)) = p(i)?;
+
+        Ok((
+            i,
+            JsxEnd {
+                name: name.to_owned(),
+            },
+        ))
+    }
+
+    fn macro_args(i: &str) -> ParseResult<'_, MacroArgs> {
+        let mut p = tuple((tag("{#def"), space1, recognize(alpha1), space1, tag("#}")));
+
+        let (i, (_, _, name, _, _)) = p(i)?;
+
+        Ok((
+            i,
+            MacroArgs {
+                args: vec![name.to_owned()],
+            },
+        ))
+    }
+
+    fn source(i: &str) -> ParseResult<'_, Source> {
+        let p = take_while(|c| c != '<' && c != '{');
+
+        let (i, text) = p(i)?;
+
+        Ok((
+            i,
+            Source {
+                text: text.to_owned(),
+            },
+        ))
+    }
+}
+
+fn is_uppercase_first(s: &str) -> bool {
+    s.chars().next().map(|s| s.is_uppercase()).unwrap_or(false)
+}
+
+#[test]
+fn test_jsx_start() {
+    assert_eq!(
+        Ast::jsx_start("<Hello name rest=\"rest\" />"),
+        Ok((
+            "",
+            JsxStart {
+                name: "Hello".into(),
+                args: vec!["name".into(), "rest=\"rest\"".into()],
+                self_closing: true,
+            }
+        ))
+    );
+
+    assert_eq!(
+        Ast::jsx_start("<Hello>"),
+        Ok((
+            "",
+            JsxStart {
+                name: "Hello".into(),
+                args: vec![],
+                self_closing: false,
+            }
+        ))
+    );
+}
+
+#[test]
+fn test_jsx_end() {
+    assert_eq!(
+        Ast::jsx_end("</Hello>"),
+        Ok((
+            "",
+            JsxEnd {
+                name: "Hello".into(),
+            }
+        ))
+    );
+}
+
+#[test]
+fn test_macro_args() {
+    assert_eq!(
+        Ast::macro_args("{#def name #}"),
+        Ok((
+            "",
+            MacroArgs {
+                args: vec!["name".into()],
+            }
+        ))
+    );
+}
+
+#[test]
+fn test_source() {
+    assert_eq!(
+        Ast::source("Test"),
+        Ok((
+            "",
+            Source {
+                text: "Test".into(),
+            }
+        ))
+    );
 }
 
 struct Rewriter {
