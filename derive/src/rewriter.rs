@@ -123,27 +123,41 @@ impl Ast {
 
         let (i, node) = p(i)?;
 
-        Ok((i, node))
+        Ok(dbg!(i, node))
     }
 
     fn jsx_start(i: &str) -> ParseResult<'_, JsxStart> {
         let mut p = tuple((
-            char('<'),
+            tag("<"),
             recognize(verify(alpha1, is_uppercase_first)),
-            opt(space1),
-            take_till(|c: char| c.eq(&'/') || c.eq(&'>')),
-            opt(char('/')),
+            opt(take_till(|c| c == '>')),
             char('>'),
         ));
 
-        let (i, (_, name, _, args, self_closing, _)) = p(i)?;
+        let (i, (_, name, args, _)) = p(i)?;
+
+        let args = args
+            .map(|s| s.trim())
+            .unwrap_or("")
+            .split(' ')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned())
+            .collect::<Vec<_>>();
+
+        let self_closing = args.last().map(|s| s.ends_with('/')).unwrap_or(false);
+
+        let args = args
+            .iter()
+            .filter(|s| !s.ends_with('/'))
+            .map(|s| s.to_owned())
+            .collect::<Vec<_>>();
 
         Ok((
             i,
             JsxStart {
                 name: name.to_owned(),
-                args: args.split_whitespace().map(|s| s.to_owned()).collect(),
-                self_closing: self_closing.is_some(),
+                args,
+                self_closing,
             },
         ))
     }
@@ -179,7 +193,7 @@ impl Ast {
     }
 
     fn source(i: &str) -> ParseResult<'_, Source> {
-        let mut p = take_while(|c: char| is_alphabetic(c as u8) || c.is_whitespace());
+        let mut p = take_while(|c| c != '<' && c != '{');
 
         let (i, text) = p(i)?;
 
