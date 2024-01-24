@@ -1,6 +1,5 @@
 use crate::generator::Buffer;
-use crate::node::Ast;
-use crate::node::JsxEnd;
+use crate::node::JsxClose;
 use crate::node::JsxStart;
 use crate::node::MacroArgs;
 use crate::node::Node;
@@ -9,7 +8,7 @@ use crate::CompileError;
 use std::collections::HashSet;
 use std::path::Path;
 
-pub(crate) fn rewrite_path<P>(path: P) -> String
+pub(crate) fn transform_path<P>(path: P) -> String
 where
     P: AsRef<Path>,
 {
@@ -30,17 +29,18 @@ where
     let macro_name = normalize(path);
 
     let parsed = Parsed::new(source)?;
-    let source = Rewriter::new(parsed.ast).build(&macro_name)?;
+    let source = Rewriter::new(parsed.nodes()).build(&macro_name)?;
 
     Ok(source)
 }
-struct Rewriter {
-    ast: Ast,
+
+struct Rewriter<'a> {
+    nodes: &'a [Node<'a>],
 }
 
-impl Rewriter {
-    fn new(ast: Ast) -> Self {
-        Self { ast }
+impl<'a> Rewriter<'a> {
+    fn new(nodes: &'a [Node<'a>]) -> Self {
+        Self { nodes }
     }
 
     fn build(&self, macro_name: &str) -> Result<String, CompileError> {
@@ -56,7 +56,6 @@ impl Rewriter {
         self.write_imports(
             buf,
             &self
-                .ast
                 .nodes
                 .iter()
                 .filter_map(|node| match node {
@@ -70,30 +69,30 @@ impl Rewriter {
         self.write_macro(
             buf,
             macro_name,
-            self.ast.nodes.iter().find_map(|node| match node {
+            self.nodes.iter().find_map(|node| match node {
                 Node::MacroArgs(node) => Some(node),
                 _ => None,
             }),
         )?;
 
-        self.visit_nodes(buf, &self.ast.nodes)?;
+        self.visit_nodes(buf, self.nodes)?;
 
         self.write_macro_end(buf, macro_name)?;
 
         Ok(())
     }
 
-    fn visit_nodes(&self, buf: &mut Buffer, nodes: &[Node]) -> Result<(), CompileError> {
+    fn visit_nodes(&self, buf: &mut Buffer, nodes: &[Node<'a>]) -> Result<(), CompileError> {
         for node in nodes {
             match node {
                 Node::JsxStart(node) => {
                     self.write_call(buf, node)?;
                 }
-                Node::JsxEnd(node) => {
+                Node::JsxClose(node) => {
                     self.write_call_end(buf, node)?;
                 }
-                Node::Source(source) => {
-                    buf.write(&source.text);
+                Node::Lit(source) => {
+                    buf.write(source.val);
                 }
                 _ => {}
             }
@@ -102,11 +101,11 @@ impl Rewriter {
         Ok(())
     }
 
-    fn write_imports(&self, buf: &mut Buffer, tags: &[&JsxStart]) -> Result<(), CompileError> {
+    fn write_imports(&self, buf: &mut Buffer, tags: &[&JsxStart<'a>]) -> Result<(), CompileError> {
         let mut imports = HashSet::new();
 
         for tag in tags {
-            let macro_name = normalize(&tag.name);
+            let macro_name = normalize(tag.name);
             let macro_path = format!("{macro_name}.html");
 
             if imports.insert(macro_name.clone()) {
@@ -123,7 +122,7 @@ impl Rewriter {
         &self,
         buf: &mut Buffer,
         macro_name: &str,
-        macro_args: Option<&MacroArgs>,
+        macro_args: Option<&MacroArgs<'a>>,
     ) -> Result<(), CompileError> {
         let macro_args = macro_args.map(|m| m.args.join(", ")).unwrap_or_default();
 
@@ -134,8 +133,8 @@ impl Rewriter {
         buf.writeln(&format!("{{% endmacro {macro_name} %}}"))
     }
 
-    fn write_call(&self, buf: &mut Buffer, tag: &JsxStart) -> Result<(), CompileError> {
-        let macro_name = normalize(&tag.name);
+    fn write_call(&self, buf: &mut Buffer, tag: &JsxStart<'a>) -> Result<(), CompileError> {
+        let macro_name = normalize(tag.name);
         let macro_args = tag.args.join(", ");
 
         buf.write(&format!(
@@ -143,18 +142,13 @@ impl Rewriter {
         ));
 
         if tag.self_closing {
-            self.write_call_end(
-                buf,
-                &JsxEnd {
-                    name: tag.name.clone(),
-                },
-            )?;
+            self.write_call_end(buf, &JsxClose { name: tag.name })?;
         }
 
         Ok(())
     }
 
-    fn write_call_end(&self, buf: &mut Buffer, _tag: &JsxEnd) -> Result<(), CompileError> {
+    fn write_call_end(&self, buf: &mut Buffer, _tag: &JsxClose<'a>) -> Result<(), CompileError> {
         buf.write("{% endcall %}");
         Ok(())
     }
@@ -174,9 +168,9 @@ where
 }
 
 #[test]
-fn test_rewrite_path() {
+fn test_transform_path() {
     assert_eq!(
-        rewrite_path("templates/hello_world.html"),
+        transform_path("templates/hello_world.html"),
         "\
         {%- import \"templates/hello_world.html\" as hello_world_scope -%}\n\
         {% call hello_world_scope::hello_world() %}{% endcall %}\n"
