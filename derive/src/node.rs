@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_till;
@@ -22,8 +24,10 @@ use parser::ParseError;
 
 const HTML_TAG_START: &str = "<";
 const HTML_TAG_CLOSE: &str = "</";
+const HTML_TAG_END: char = '>';
+
 const MACRO_ARGS_START: &str = "{#def";
-const MACRO_ARGS_CLOSE: &str = "#}";
+const MACRO_ARGS_END: &str = "#}";
 
 type ParseResult<'a, T = &'a str> = Result<(&'a str, T), nom::Err<nom::error::Error<&'a str>>>;
 
@@ -72,19 +76,42 @@ pub(crate) enum Node<'a> {
 
 impl<'a> Node<'a> {
     fn many(i: &'a str) -> ParseResult<'a, Vec<Self>> {
-        complete(many0(alt((map(Lit::parse, Self::Lit), Self::parse))))(i)
+        complete(many0(alt((
+            map(Lit::parse, Self::Lit),
+            map(MacroArgs::parse, Self::MacroArgs),
+            Self::parse,
+        ))))(i)
     }
 
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
-        let mut p = alt((
-            map(JsxStart::parse, Self::JsxStart),
-            map(JsxClose::parse, Self::JsxClose),
-            map(MacroArgs::parse, Self::MacroArgs),
-        ));
+        let mut p = // delimited(
+            // |i| State::tag_jsx_start(i),
+            alt((
+                map(JsxStart::parse, Self::JsxStart),
+                map(JsxClose::parse, Self::JsxClose),
+            ));
+        // cut(|i| State::tag_jsx_end(i)),
+        // );
 
-        let result = p(i)?;
+        let result = p(i);
 
-        Ok(dbg!(result))
+        dbg!(result)
+    }
+}
+
+struct State;
+
+impl State {
+    fn tag_jsx_start<'i>(i: &'i str) -> ParseResult<'i> {
+        // recognize(tuple((
+        // tag(HTML_TAG_START),
+        // verify(anychar, |c| c.is_ascii_uppercase()),
+        // )))(i)
+        tag(HTML_TAG_START)(i)
+    }
+
+    fn tag_jsx_end<'i>(i: &'i str) -> ParseResult<'i> {
+        tag(HTML_TAG_END.to_string().as_str())(i)
     }
 }
 
@@ -120,8 +147,8 @@ impl<'a> JsxStart<'a> {
         let mut p = tuple((
             tag(HTML_TAG_START),
             recognize(verify(alpha1, is_uppercase_first)),
-            opt(take_till(|c| c == '>')),
-            char('>'),
+            opt(take_till(|c| c == HTML_TAG_END)),
+            char(HTML_TAG_END),
         ));
 
         let (i, (_, name, args, _)) = p(i)?;
@@ -162,7 +189,7 @@ impl<'a> JsxClose<'a> {
         let mut p = tuple((
             tag(HTML_TAG_CLOSE),
             recognize(verify(alpha1, is_uppercase_first)),
-            char('>'),
+            char(HTML_TAG_END),
         ));
 
         let (i, (_, name, _)) = p(i)?;
@@ -183,7 +210,7 @@ impl<'a> MacroArgs<'a> {
             space1,
             recognize(alpha1),
             space1,
-            tag(MACRO_ARGS_CLOSE),
+            tag(MACRO_ARGS_END),
         ));
 
         let (i, (_, _, args, _, _)) = p(i)?;
@@ -345,7 +372,7 @@ fn test_node() {
     );
 
     assert_eq!(
-        Node::many("<p>"),
-        Ok(("", vec![Node::Lit(Lit { val: "<p>" })]))
+        Node::many("WIP"),
+        Ok(("", vec![Node::Lit(Lit { val: "WIP" })]))
     );
 }
