@@ -4,6 +4,7 @@ use crate::node::JsxEnd;
 use crate::node::JsxStart;
 use crate::node::MacroArgs;
 use crate::node::Node;
+use crate::node::Parsed;
 use crate::CompileError;
 use std::collections::HashSet;
 use std::path::Path;
@@ -28,8 +29,8 @@ where
 {
     let macro_name = normalize(path);
 
-    let parsed = Ast::from_str(&source)?;
-    let source = Rewriter::new(parsed).build(&macro_name)?;
+    let parsed = Parsed::new(source)?;
+    let source = Rewriter::new(parsed.ast).build(&macro_name)?;
 
     Ok(source)
 }

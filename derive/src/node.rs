@@ -44,13 +44,27 @@ pub(crate) enum Node {
     Source(Source),
 }
 
+pub(crate) struct Parsed {
+    pub(crate) ast: Ast,
+    #[allow(dead_code)]
+    pub(crate) source: String,
+}
+
+impl Parsed {
+    pub(crate) fn new(source: String) -> Result<Self, ParseError> {
+        let ast = Ast::from_str(source.as_str())?;
+
+        Ok(Self { ast, source })
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Ast {
     pub(crate) nodes: Vec<Node>,
 }
 
 impl Ast {
-    pub(crate) fn from_str(src: &str) -> Result<Self, ParseError> {
+    fn from_str(src: &str) -> Result<Self, ParseError> {
         let mut nodes = vec![];
 
         let mut i = src;
@@ -230,45 +244,72 @@ fn test_source() {
 }
 
 #[test]
-fn test_parsed() {
-    let parsed = |s| Ast::from_str(s).unwrap();
-
-    assert_eq!(parsed("<Hello name />").nodes.len(), 1);
-
+fn test_from_str() {
     assert_eq!(
-        parsed("<Hello name />").nodes.first(),
-        Some(&Node::JsxStart(JsxStart {
+        Ast::from_str("<Hello />").unwrap().nodes,
+        vec![Node::JsxStart(JsxStart {
             name: "Hello".into(),
-            args: vec!["name".into()],
+            args: vec![],
             self_closing: true,
-        }))
+        })]
     );
 
     assert_eq!(
-        parsed("Test\n<Hello name />").nodes.first(),
-        Some(&Node::Source(Source {
-            text: "Test\n".into()
-        }))
+        Ast::from_str("<Hello />\nTest").unwrap().nodes,
+        vec![
+            Node::JsxStart(JsxStart {
+                name: "Hello".into(),
+                args: vec![],
+                self_closing: true,
+            }),
+            Node::Source(Source {
+                text: "\nTest".into()
+            })
+        ]
     );
 
     assert_eq!(
-        parsed("<Hello name />\nTest").nodes.last(),
-        Some(&Node::Source(Source {
-            text: "\nTest".into()
-        }))
+        Ast::from_str("Test\n<Hello />").unwrap().nodes,
+        vec![
+            Node::Source(Source {
+                text: "Test\n".into()
+            }),
+            Node::JsxStart(JsxStart {
+                name: "Hello".into(),
+                args: vec![],
+                self_closing: true,
+            })
+        ],
     );
 
     assert_eq!(
-        parsed("</Hello>").nodes.first(),
-        Some(&Node::JsxEnd(JsxEnd {
+        Ast::from_str("</Hello>").unwrap().nodes,
+        vec![Node::JsxEnd(JsxEnd {
             name: "Hello".into()
-        }))
+        })]
     );
 
     assert_eq!(
-        parsed("Test\n</Hello>").nodes.last(),
-        Some(&Node::JsxEnd(JsxEnd {
-            name: "Hello".into()
-        }))
+        Ast::from_str("</Hello>\nTest").unwrap().nodes,
+        vec![
+            Node::JsxEnd(JsxEnd {
+                name: "Hello".into()
+            }),
+            Node::Source(Source {
+                text: "\nTest".into()
+            })
+        ]
+    );
+
+    assert_eq!(
+        Ast::from_str("Test\n</Hello>").unwrap().nodes,
+        vec![
+            Node::Source(Source {
+                text: "Test\n".into()
+            }),
+            Node::JsxEnd(JsxEnd {
+                name: "Hello".into()
+            })
+        ]
     );
 }
