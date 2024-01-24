@@ -17,6 +17,8 @@ mod heritage;
 use heritage::{Context, Heritage};
 mod input;
 use input::{Print, TemplateArgs, TemplateInput};
+
+mod node;
 mod rewriter;
 
 #[proc_macro_derive(Template, attributes(template))]
