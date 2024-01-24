@@ -21,7 +21,9 @@ use nom::sequence::tuple;
 use parser::ParseError;
 
 const HTML_TAG_START: &str = "<";
+const HTML_TAG_CLOSE: &str = "</";
 const MACRO_ARGS_START: &str = "{#def";
+const MACRO_ARGS_CLOSE: &str = "#}";
 
 type ParseResult<'a, T = &'a str> = Result<(&'a str, T), nom::Err<nom::error::Error<&'a str>>>;
 
@@ -97,13 +99,12 @@ impl<'a> Lit<'a> {
 
         let (i, _) = not(eof)(i)?;
         let (i, content) = opt(recognize(skip_till(p_start)))(i)?;
-        let (i, content) = match content {
-            Some("") => return Err(nom::Err::Error(error_position!(i, ErrorKind::TakeUntil))),
-            Some(content) => (i, content),
-            None => ("", i),
-        };
 
-        Ok((i, Self { val: content }))
+        match content {
+            Some("") => Err(nom::Err::Error(error_position!(i, ErrorKind::TakeUntil))),
+            Some(content) => Ok((i, Self { val: content })),
+            None => Ok(("", Self { val: i })),
+        }
     }
 }
 
@@ -117,7 +118,7 @@ pub(crate) struct JsxStart<'a> {
 impl<'a> JsxStart<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         let mut p = tuple((
-            tag("<"),
+            tag(HTML_TAG_START),
             recognize(verify(alpha1, is_uppercase_first)),
             opt(take_till(|c| c == '>')),
             char('>'),
@@ -159,7 +160,7 @@ pub(crate) struct JsxClose<'a> {
 impl<'a> JsxClose<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         let mut p = tuple((
-            tag("</"),
+            tag(HTML_TAG_CLOSE),
             recognize(verify(alpha1, is_uppercase_first)),
             char('>'),
         ));
@@ -177,7 +178,13 @@ pub(crate) struct MacroArgs<'a> {
 
 impl<'a> MacroArgs<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
-        let mut p = tuple((tag("{#def"), space1, recognize(alpha1), space1, tag("#}")));
+        let mut p = tuple((
+            tag(MACRO_ARGS_START),
+            space1,
+            recognize(alpha1),
+            space1,
+            tag(MACRO_ARGS_CLOSE),
+        ));
 
         let (i, (_, _, args, _, _)) = p(i)?;
 
@@ -337,5 +344,8 @@ fn test_node() {
         ))
     );
 
-    // TODO: assert_eq!(Node::many("<"), Ok(("", vec![Node::Lit(Lit { val: "<" })])));
+    assert_eq!(
+        Node::many("<p>"),
+        Ok(("", vec![Node::Lit(Lit { val: "<p>" })]))
+    );
 }
