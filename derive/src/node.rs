@@ -337,10 +337,5 @@ fn test_node() {
         ))
     );
 
-    /*
-    assert_eq!(
-        Node::many("<"),
-        Ok(("", vec![Node::Lit(Lit { val: "<".into() })]))
-    );
-    */
+    // TODO: assert_eq!(Node::many("<"), Ok(("", vec![Node::Lit(Lit { val: "<" })])));
 }
