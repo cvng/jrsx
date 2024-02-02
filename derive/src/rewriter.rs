@@ -1,7 +1,7 @@
 use crate::generator::Buffer;
+use crate::node::JsxBlock;
 use crate::node::JsxClose;
-use crate::node::JsxStart;
-use crate::node::MacroArgs;
+use crate::node::MacroDef;
 use crate::node::Node;
 use crate::node::Parsed;
 use crate::CompileError;
@@ -59,7 +59,7 @@ impl<'a> Rewriter<'a> {
                 .nodes
                 .iter()
                 .filter_map(|node| match node {
-                    Node::JsxStart(node) => Some(node),
+                    Node::JsxBlock(node) => Some(node),
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
@@ -70,7 +70,7 @@ impl<'a> Rewriter<'a> {
             buf,
             macro_name,
             self.nodes.iter().find_map(|node| match node {
-                Node::MacroArgs(node) => Some(node),
+                Node::MacroDef(node) => Some(node),
                 _ => None,
             }),
         )?;
@@ -85,7 +85,7 @@ impl<'a> Rewriter<'a> {
     fn visit_nodes(&self, buf: &mut Buffer, nodes: &[Node<'a>]) -> Result<(), CompileError> {
         for node in nodes {
             match node {
-                Node::JsxStart(node) => {
+                Node::JsxBlock(node) => {
                     self.write_call(buf, node)?;
                 }
                 Node::JsxClose(node) => {
@@ -101,7 +101,7 @@ impl<'a> Rewriter<'a> {
         Ok(())
     }
 
-    fn write_imports(&self, buf: &mut Buffer, tags: &[&JsxStart<'a>]) -> Result<(), CompileError> {
+    fn write_imports(&self, buf: &mut Buffer, tags: &[&JsxBlock<'a>]) -> Result<(), CompileError> {
         let mut imports = HashSet::new();
 
         for tag in tags {
@@ -122,9 +122,9 @@ impl<'a> Rewriter<'a> {
         &self,
         buf: &mut Buffer,
         macro_name: &str,
-        macro_args: Option<&MacroArgs<'a>>,
+        def: Option<&MacroDef<'a>>,
     ) -> Result<(), CompileError> {
-        let macro_args = macro_args.map(|m| m.args.join(", ")).unwrap_or_default();
+        let macro_args = def.map(|m| m.args.join(", ")).unwrap_or_default();
 
         buf.writeln(&format!("{{% macro {macro_name}({macro_args}) %}}"))
     }
@@ -133,7 +133,7 @@ impl<'a> Rewriter<'a> {
         buf.writeln(&format!("{{% endmacro {macro_name} %}}"))
     }
 
-    fn write_call(&self, buf: &mut Buffer, tag: &JsxStart<'a>) -> Result<(), CompileError> {
+    fn write_call(&self, buf: &mut Buffer, tag: &JsxBlock<'a>) -> Result<(), CompileError> {
         let macro_name = normalize(tag.name);
         let macro_args = tag.args.join(", ");
 
