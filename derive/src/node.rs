@@ -3,6 +3,7 @@ use nom::bytes::complete::tag;
 use nom::bytes::complete::take_till;
 use nom::character::complete::alpha1;
 use nom::character::complete::anychar;
+use nom::character::complete::char;
 use nom::character::complete::space1;
 use nom::combinator::complete;
 use nom::combinator::cut;
@@ -19,14 +20,14 @@ use nom::sequence::terminated;
 use nom::sequence::tuple;
 use parser::ParseError;
 
-const JSX_BLOCK_START: &str = "<";
-const JSX_BLOCK_END: &str = ">";
+const JSX_BLOCK_START: char = '<';
+const JSX_BLOCK_END: char = '>';
 const JSX_CLOSE_START: &str = "</";
-const JSX_CLOSE_END: &str = ">";
+const JSX_CLOSE_END: char = '>';
 const MACRO_DEF_START: &str = "{#def";
 const MACRO_DEF_END: &str = "#}";
 
-type ParseResult<'a, T = &'a str> = Result<(&'a str, T), nom::Err<nom::error::Error<&'a str>>>;
+type ParseResult<'a, T = &'a str> = nom::IResult<&'a str, T>;
 
 pub(crate) struct Parsed {
     pub(crate) ast: Ast<'static>,
@@ -76,9 +77,15 @@ impl<'a> Node<'a> {
         complete(many0(alt((
             map(Lit::parse, Self::Lit),
             map(MacroDef::parse, Self::MacroDef),
+            Self::parse,
+        ))))(i)
+    }
+
+    fn parse(i: &'a str) -> ParseResult<'a, Self> {
+        alt((
             map(JsxBlock::parse, Self::JsxBlock),
             map(JsxClose::parse, Self::JsxClose),
-        ))))(i)
+        ))(i)
     }
 }
 
@@ -90,7 +97,7 @@ pub(crate) struct Lit<'a> {
 impl<'a> Lit<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         fn tag_jsx_block_start(i: &str) -> ParseResult<'_> {
-            let (i, _) = tag(JSX_BLOCK_START)(i)?;
+            let (i, _) = char(JSX_BLOCK_START)(i)?;
             verify(alpha1, is_uppercase_first)(if let Some(i) = i.strip_prefix('/') {
                 i
             } else {
@@ -127,10 +134,10 @@ pub(crate) struct JsxBlock<'a> {
 impl<'a> JsxBlock<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         let mut p = tuple((
-            tag(JSX_BLOCK_START),
+            char(JSX_BLOCK_START),
             recognize(verify(alpha1, is_uppercase_first)),
-            opt(take_till(|c: char| c.to_string() == JSX_BLOCK_END)),
-            tag(JSX_BLOCK_END),
+            opt(take_till(|c| c == JSX_BLOCK_END)),
+            char(JSX_BLOCK_END),
         ));
 
         let (i, (_, name, args, _)) = p(i)?;
@@ -171,7 +178,7 @@ impl<'a> JsxClose<'a> {
         let mut p = tuple((
             tag(JSX_CLOSE_START),
             recognize(verify(alpha1, is_uppercase_first)),
-            tag(JSX_CLOSE_END),
+            char(JSX_CLOSE_END),
         ));
 
         let (i, (_, name, _)) = p(i)?;
