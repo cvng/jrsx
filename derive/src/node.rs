@@ -15,7 +15,6 @@ use nom::combinator::verify;
 use nom::error::ErrorKind;
 use nom::error_position;
 use nom::multi::many0;
-use nom::sequence::delimited;
 use nom::sequence::terminated;
 use nom::sequence::tuple;
 use parser::ParseError;
@@ -23,6 +22,7 @@ use parser::ParseError;
 const JSX_BLOCK_START: &str = "<";
 const JSX_BLOCK_END: &str = ">";
 const JSX_CLOSE_START: &str = "</";
+const JSX_CLOSE_END: &str = ">";
 const MACRO_DEF_START: &str = "{#def";
 const MACRO_DEF_END: &str = "#}";
 
@@ -63,37 +63,6 @@ impl<'a> Ast<'a> {
     }
 }
 
-struct State;
-
-impl State {
-    fn tag_jsx_block_start(i: &str) -> ParseResult<'_> {
-        let (i, _) = tag(JSX_BLOCK_START)(i)?;
-        verify(alpha1, is_uppercase_first)(if let Some(i) = i.strip_prefix('/') {
-            i
-        } else {
-            i
-        })?;
-
-        Ok((i, ""))
-    }
-
-    fn tag_jsx_block_end(i: &str) -> ParseResult<'_> {
-        tag(JSX_BLOCK_END)(i)
-    }
-
-    fn tag_jsx_close_start(i: &str) -> ParseResult<'_> {
-        tag(JSX_CLOSE_START)(i)
-    }
-
-    fn tag_macro_def_start(i: &str) -> ParseResult<'_> {
-        tag(MACRO_DEF_START)(i)
-    }
-
-    fn tag_macro_def_end(i: &str) -> ParseResult<'_> {
-        tag(MACRO_DEF_END)(i)
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub(crate) enum Node<'a> {
     Lit(Lit<'a>),
@@ -107,21 +76,9 @@ impl<'a> Node<'a> {
         complete(many0(alt((
             map(Lit::parse, Self::Lit),
             map(MacroDef::parse, Self::MacroDef),
-            Self::parse,
+            map(JsxBlock::parse, Self::JsxBlock),
+            map(JsxClose::parse, Self::JsxClose),
         ))))(i)
-    }
-
-    fn parse(i: &'a str) -> ParseResult<'a, Self> {
-        let mut p = delimited(
-            |i| State::tag_jsx_block_start(i),
-            alt((
-                map(JsxBlock::parse, Self::JsxBlock),
-                map(JsxClose::parse, Self::JsxClose),
-            )),
-            cut(|i| State::tag_jsx_block_end(i)),
-        );
-
-        p(i)
     }
 }
 
@@ -132,10 +89,21 @@ pub(crate) struct Lit<'a> {
 
 impl<'a> Lit<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
+        fn tag_jsx_block_start(i: &str) -> ParseResult<'_> {
+            let (i, _) = tag(JSX_BLOCK_START)(i)?;
+            verify(alpha1, is_uppercase_first)(if let Some(i) = i.strip_prefix('/') {
+                i
+            } else {
+                i
+            })?;
+
+            Ok((i, ""))
+        }
+
         let p_start = alt((
-            State::tag_jsx_block_start,
-            State::tag_jsx_close_start,
-            State::tag_macro_def_start,
+            tag_jsx_block_start,
+            tag(JSX_CLOSE_START),
+            tag(MACRO_DEF_START),
         ));
 
         let (i, _) = not(eof)(i)?;
@@ -159,11 +127,13 @@ pub(crate) struct JsxBlock<'a> {
 impl<'a> JsxBlock<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         let mut p = tuple((
+            tag(JSX_BLOCK_START),
             recognize(verify(alpha1, is_uppercase_first)),
             opt(take_till(|c: char| c.to_string() == JSX_BLOCK_END)),
+            tag(JSX_BLOCK_END),
         ));
 
-        let (i, (name, args)) = p(i)?;
+        let (i, (_, name, args, _)) = p(i)?;
 
         let args = args
             .map(|s| s.trim())
@@ -198,9 +168,13 @@ pub(crate) struct JsxClose<'a> {
 
 impl<'a> JsxClose<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
-        let mut p = tuple((tag("/"), recognize(verify(alpha1, is_uppercase_first))));
+        let mut p = tuple((
+            tag(JSX_CLOSE_START),
+            recognize(verify(alpha1, is_uppercase_first)),
+            tag(JSX_CLOSE_END),
+        ));
 
-        let (i, (_, name)) = p(i)?;
+        let (i, (_, name, _)) = p(i)?;
 
         Ok((i, Self { name }))
     }
@@ -214,11 +188,11 @@ pub(crate) struct MacroDef<'a> {
 impl<'a> MacroDef<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         let mut p = tuple((
-            State::tag_macro_def_start,
+            tag(MACRO_DEF_START),
             space1,
             recognize(alpha1),
             space1,
-            State::tag_macro_def_end,
+            tag(MACRO_DEF_END),
         ));
 
         let (i, (_, _, args, _, _)) = p(i)?;
@@ -261,7 +235,7 @@ fn skip_till<'a, O>(
 #[test]
 fn test_jsx_block() {
     assert_eq!(
-        JsxBlock::parse("Hello name rest=\"rest\" /"),
+        JsxBlock::parse("<Hello name rest=\"rest\" />"),
         Ok((
             "",
             JsxBlock {
@@ -273,7 +247,7 @@ fn test_jsx_block() {
     );
 
     assert_eq!(
-        JsxBlock::parse("Hello"),
+        JsxBlock::parse("<Hello>"),
         Ok((
             "",
             JsxBlock {
@@ -288,7 +262,7 @@ fn test_jsx_block() {
 #[test]
 fn test_jsx_close() {
     assert_eq!(
-        JsxClose::parse("/Hello"),
+        JsxClose::parse("</Hello>"),
         Ok(("", JsxClose { name: "Hello" }))
     );
 }
