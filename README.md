@@ -13,9 +13,7 @@ A clean `JSX` syntax for your [Askama][1] templates.
 {% call hello_scope::hello(name=name) %}
 {% call hello_scope::hello(name="world") %}
 {% call child_scope::child() %}Super!{% endcall %}
-```
 
-```html
 <!-- After -->
 <Hello name />
 <Hello name=name />
