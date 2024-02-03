@@ -9,10 +9,7 @@ use rewriter::normalize;
 use rewriter::Rewriter;
 use std::path::Path;
 
-pub fn transform_path<P>(path: P) -> String
-where
-    P: AsRef<Path>,
-{
+pub fn transform_path<P: AsRef<Path>>(path: P) -> String {
     let macro_name = normalize(&path);
     let macro_path = path.as_ref().display();
 
@@ -23,10 +20,7 @@ where
     )
 }
 
-pub fn rewrite_source<P>(path: P, source: String) -> String
-where
-    P: AsRef<Path>,
-{
+pub fn rewrite_source<P: AsRef<Path>>(path: P, source: String) -> String {
     let macro_name = normalize(path);
 
     let parsed = match Ast::from_str(&source) {
