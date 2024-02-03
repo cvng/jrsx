@@ -20,7 +20,6 @@ use nom::multi::many0;
 use nom::sequence::delimited;
 use nom::sequence::terminated;
 use nom::sequence::tuple;
-use parser::ParseError;
 
 const JSX_BLOCK_START: &str = "<";
 const JSX_BLOCK_END: &str = ">";
@@ -30,32 +29,15 @@ const MACRO_DEF_END: &str = "#}";
 
 type ParseResult<'a, T = &'a str> = nom::IResult<&'a str, T>;
 
-pub(crate) struct Parsed {
-    pub(crate) ast: Ast<'static>,
-    #[allow(dead_code)]
-    pub(crate) source: String,
-}
-
-impl Parsed {
-    pub(crate) fn new(source: String) -> Result<Self, ParseError> {
-        let src = unsafe { std::mem::transmute::<&str, &'static str>(source.as_str()) };
-        let ast = Ast::from_str(src)?;
-
-        Ok(Self { ast, source })
-    }
-
-    pub(crate) fn nodes(&self) -> &[Node<'_>] {
-        &self.ast.nodes
-    }
-}
+pub(crate) struct ParseError(String);
 
 #[derive(Debug)]
 pub(crate) struct Ast<'a> {
-    nodes: Vec<Node<'a>>,
+    pub(crate) nodes: Vec<Node<'a>>,
 }
 
 impl<'a> Ast<'a> {
-    fn from_str(src: &'a str) -> Result<Self, ParseError> {
+    pub(crate) fn from_str(src: &'a str) -> Result<Self, ParseError> {
         let parse = |i: &'a str| Node::many(i);
 
         match terminated(parse, cut(eof))(src) {

@@ -1,50 +1,23 @@
-use crate::generator::Buffer;
-use crate::node::JsxBlock;
-use crate::node::JsxClose;
-use crate::node::MacroDef;
-use crate::node::Node;
-use crate::node::Parsed;
-use crate::CompileError;
+use crate::parser::JsxBlock;
+use crate::parser::JsxClose;
+use crate::parser::MacroDef;
+use crate::parser::Node;
 use std::collections::HashSet;
 use std::path::Path;
 
-pub(crate) fn transform_path<P>(path: P) -> String
-where
-    P: AsRef<Path>,
-{
-    let macro_name = normalize(&path);
-    let macro_path = path.as_ref().display();
+pub(crate) struct CompileError(String);
 
-    format!(
-        "\
-        {{%- import \"{macro_path}\" as {macro_name}_scope -%}}\n\
-        {{% call {macro_name}_scope::{macro_name}() %}}{{% endcall %}}\n"
-    )
-}
-
-pub(crate) fn rewrite_source<P>(path: P, source: String) -> Result<String, CompileError>
-where
-    P: AsRef<Path>,
-{
-    let macro_name = normalize(path);
-
-    let parsed = Parsed::new(source)?;
-    let source = Rewriter::new(parsed.nodes()).build(&macro_name)?;
-
-    Ok(source)
-}
-
-struct Rewriter<'a> {
+pub(crate) struct Rewriter<'a> {
     nodes: &'a [Node<'a>],
 }
 
 impl<'a> Rewriter<'a> {
-    fn new(nodes: &'a [Node<'a>]) -> Self {
+    pub(crate) fn new(nodes: &'a [Node<'a>]) -> Self {
         Self { nodes }
     }
 
-    fn build(&self, macro_name: &str) -> Result<String, CompileError> {
-        let mut buf = Buffer::new(0);
+    pub(crate) fn build(&self, macro_name: &str) -> Result<String, CompileError> {
+        let mut buf = Buffer::new();
 
         self.rewrite_template(&mut buf, macro_name)?;
 
@@ -154,7 +127,29 @@ impl<'a> Rewriter<'a> {
     }
 }
 
-fn normalize<P>(path: P) -> String
+pub(crate) struct Buffer {
+    pub(crate) buf: String,
+}
+
+impl Buffer {
+    pub(crate) fn new() -> Self {
+        Self { buf: String::new() }
+    }
+
+    pub(crate) fn writeln(&mut self, s: &str) -> Result<(), CompileError> {
+        if !s.is_empty() {
+            self.write(s);
+        }
+        self.buf.push('\n');
+        Ok(())
+    }
+
+    pub(crate) fn write(&mut self, s: &str) {
+        self.buf.push_str(s);
+    }
+}
+
+pub(crate) fn normalize<P>(path: P) -> String
 where
     P: AsRef<Path>,
 {
@@ -165,32 +160,4 @@ where
         .unwrap()
         .to_lowercase()
         .replace(['-', '.'], "_")
-}
-
-#[test]
-fn test_transform_path() {
-    assert_eq!(
-        transform_path("templates/hello_world.html"),
-        "\
-        {%- import \"templates/hello_world.html\" as hello_world_scope -%}\n\
-        {% call hello_world_scope::hello_world() %}{% endcall %}\n"
-    );
-}
-
-#[test]
-fn test_rewrite_source() {
-    assert_eq!(
-        rewrite_source("index", "<Hello name />".into()).unwrap(),
-        "\
-        {%- import \"hello.html\" as hello_scope -%}\n\
-        {% macro index() %}\n\
-        {% call hello_scope::hello(name) %}{% endcall %}{% endmacro index %}\n"
-    );
-}
-
-#[test]
-fn test_normalize() {
-    assert_eq!(normalize("templates/hello_world.html"), "hello_world");
-    assert_eq!(normalize("templates/hello-world.html"), "hello_world");
-    assert_eq!(normalize("templates/hello.world.html"), "hello_world");
 }

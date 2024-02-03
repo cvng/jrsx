@@ -1,4 +1,3 @@
-/*
 use jrsx::Template;
 
 #[derive(Template)]
@@ -30,4 +29,3 @@ fn test_template2() {
         <div>\nSuper!\n</div>\n"
     );
 }
-*/
