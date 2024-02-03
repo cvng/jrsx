@@ -4,6 +4,7 @@ use nom::bytes::complete::take_till;
 use nom::character::complete::alpha1;
 use nom::character::complete::anychar;
 use nom::character::complete::char;
+use nom::character::complete::space0;
 use nom::character::complete::space1;
 use nom::combinator::complete;
 use nom::combinator::cut;
@@ -21,8 +22,8 @@ use nom::sequence::terminated;
 use nom::sequence::tuple;
 use parser::ParseError;
 
-const JSX_BLOCK_START: char = '<';
-const JSX_BLOCK_END: char = '>';
+const JSX_BLOCK_START: &str = "<";
+const JSX_BLOCK_END: &str = ">";
 const JSX_CLOSE_START: &str = "</";
 const MACRO_DEF_START: &str = "{#def";
 const MACRO_DEF_END: &str = "#}";
@@ -83,12 +84,12 @@ impl<'a> Node<'a> {
 
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         delimited(
-            |i| char(JSX_BLOCK_START)(i),
+            |i| tag(JSX_BLOCK_START)(i),
             alt((
                 map(JsxBlock::parse, Self::JsxBlock),
                 map(JsxClose::parse, Self::JsxClose),
             )),
-            cut(|i| char(JSX_BLOCK_END)(i)),
+            cut(|i| tag(JSX_BLOCK_END)(i)),
         )(i)
     }
 }
@@ -100,21 +101,10 @@ pub(crate) struct Lit<'a> {
 
 impl<'a> Lit<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
-        fn tag_jsx_block_start(i: &str) -> ParseResult<'_> {
-            let (i, _) = char(JSX_BLOCK_START)(i)?;
-            verify(alpha1, is_uppercase_first)(if let Some(i) = i.strip_prefix('/') {
-                i
-            } else {
-                i
-            })?;
-
-            Ok((i, ""))
-        }
-
         let p_start = alt((
-            tag_jsx_block_start,
-            tag(JSX_CLOSE_START),
-            tag(MACRO_DEF_START),
+            tuple((tag(JSX_BLOCK_START), verify(alpha1, is_uppercase_first))),
+            tuple((tag(JSX_CLOSE_START), verify(alpha1, is_uppercase_first))),
+            tuple((tag(MACRO_DEF_START), verify(space0, |_: &str| true))),
         ));
 
         let (i, _) = not(eof)(i)?;
@@ -139,7 +129,7 @@ impl<'a> JsxBlock<'a> {
     fn parse(i: &'a str) -> ParseResult<'a, Self> {
         let mut p = tuple((
             recognize(verify(alpha1, is_uppercase_first)),
-            opt(take_till(|c| c == JSX_BLOCK_END)),
+            opt(take_till(|c: char| c.to_string() == JSX_BLOCK_END)),
         ));
 
         let (i, (name, args)) = p(i)?;
@@ -359,4 +349,41 @@ fn test_node() {
     );
 
     assert_eq!(Node::many("<"), Ok(("", vec![Node::Lit(Lit { val: "<" })])));
+
+    assert_eq!(
+        Node::many("<i"),
+        Ok(("", vec![Node::Lit(Lit { val: "<i" })]))
+    );
+
+    assert_eq!(
+        Node::many("<i>"),
+        Ok(("", vec![Node::Lit(Lit { val: "<i>" })]))
+    );
+
+    assert_eq!(
+        Node::many("<i />"),
+        Ok(("", vec![Node::Lit(Lit { val: "<i />" })]))
+    );
+
+    assert_eq!(Node::many(">"), Ok(("", vec![Node::Lit(Lit { val: ">" })])));
+
+    assert_eq!(
+        Node::many("/>"),
+        Ok(("", vec![Node::Lit(Lit { val: "/>" })]))
+    );
+
+    assert_eq!(
+        Node::many("</"),
+        Ok(("", vec![Node::Lit(Lit { val: "</" })]))
+    );
+
+    assert_eq!(
+        Node::many("</i"),
+        Ok(("", vec![Node::Lit(Lit { val: "</i" })]))
+    );
+
+    assert_eq!(
+        Node::many("</i>"),
+        Ok(("", vec![Node::Lit(Lit { val: "</i>" })]))
+    );
 }
