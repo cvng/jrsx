@@ -29,7 +29,7 @@ const MACRO_DEF_END: &str = "#}";
 
 type ParseResult<'a, T = &'a str> = nom::IResult<&'a str, T>;
 
-pub(crate) struct ParseError(String);
+pub(crate) struct ParseError;
 
 #[derive(Debug)]
 pub(crate) struct Ast<'a> {
@@ -42,7 +42,7 @@ impl<'a> Ast<'a> {
 
         match terminated(parse, cut(eof))(src) {
             Ok(("", nodes)) => Ok(Self { nodes }),
-            err => panic!("{:#?}", err),
+            Ok(_) | Err(_) => Err(ParseError),
         }
     }
 }

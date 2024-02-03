@@ -5,7 +5,7 @@ use crate::parser::Node;
 use std::collections::HashSet;
 use std::path::Path;
 
-pub(crate) struct CompileError(String);
+pub(crate) struct CompileError;
 
 pub(crate) struct Rewriter<'a> {
     nodes: &'a [Node<'a>],
