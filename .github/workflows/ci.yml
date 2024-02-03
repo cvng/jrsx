@@ -1,0 +1,25 @@
+name: CI
+
+on: [push]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+    RUSTFLAGS: --deny warnings
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@nightly
+              with:
+                components: clippy, rustfmt
+            - uses: swatinem/rust-cache@v2
+            - run: cargo fmt --check
+            - run: cargo build
+            - run: cargo check
+            - run: cargo lint --all-targets
+            - run: cargo test

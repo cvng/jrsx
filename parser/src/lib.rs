@@ -200,6 +200,7 @@ fn skip_till<'a, O>(
 ) -> impl FnMut(&'a str) -> ParseResult<'a, (&'a str, O)> {
     enum Next<O> {
         IsEnd(O),
+        #[allow(dead_code)]
         NotEnd(char),
     }
     let mut next = alt((map(end, Next::IsEnd), map(anychar, Next::NotEnd)));
