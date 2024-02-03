@@ -2,6 +2,10 @@ name: CI
 
 on: [push]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
     RUSTFLAGS: --deny warnings
 
