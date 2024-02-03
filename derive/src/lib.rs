@@ -18,9 +18,6 @@ use heritage::{Context, Heritage};
 mod input;
 use input::{Print, TemplateArgs, TemplateInput};
 
-mod node;
-mod rewriter;
-
 #[proc_macro_derive(Template, attributes(template))]
 pub fn derive_template(input: TokenStream) -> TokenStream {
     let ast = syn::parse::<syn::DeriveInput>(input).unwrap();
